@@ -22,13 +22,20 @@ function test_A1Notation() {
 }
 
 function test_interpolateTemplateString() {
+  const INDENT = 2;
   const testStrings = [];
   let cachedMap = null;
-  const template = "before{{name}} - {{NOW}}after";
+  const template1 = "before{{name}} - {{NOW}}after";
+  const template2 = "before{{{x:32}}} - {{NOW}}after {{chart+}}";
   let { metaColumnsMap, metaData, mergeColumnsMap, mergeData, mergeDisplayData } = getMergeData();
   const dataRow = mergeData.length > 0 ? mergeData[0] : null;
-  let res = interpolateTemplateString(template, dataRow, mergeColumnsMap, cachedMap);
-  Logger.log(JSON.stringify(template) + " -> " + JSON.stringify(res));
-  Logger.log(JSON.stringify(template) + " -> " + JSON.stringify(tokenize(template)));
+  for (let template of [template1, template2]) {
+    const tokens = tokenize(template);
+    const res = interpolateTemplateString(template, dataRow, mergeColumnsMap, cachedMap);
+    Logger.log("TEST  : " + JSON.stringify(template));
+    Logger.log("TOKENS: " + JSON.stringify(tokenize(template), null, INDENT));
+    Logger.log("INTERP: " + JSON.stringify(res, null, INDENT));
+    Logger.log("RESULT: " + res.interpolated);
+  }
 }
 

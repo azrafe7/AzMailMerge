@@ -1,11 +1,13 @@
 const MERGE_SETTINGS_SHEET = 'merge_settings';
 const TEMPLATE_SETTINGS_TEST_COL = 'TEST';
 
+function NO_OP() {}
+
 // create menu
 function onOpen() {
   TOASTER.log(TOASTER.WARN, "Loading menu & scripts. Please wait...", 10);
 
-  const templateSettings = loadTemplateSettings(true);
+  const { rowMap, templateSettings } = loadTemplateSettings(true);
 
   let menu = G.ui.createMenu('AzMM')
     .addItem("Merge", "AzMM.merge");
@@ -17,8 +19,6 @@ function onOpen() {
   
   TOASTER.log(TOASTER.INFO, "Menu & scripts loaded!", 5);
 }
-
-function NO_OP() {}
 
 function uiAvailable() {
   try {
@@ -119,6 +119,11 @@ function transpose(matrix) {
   return matrix[0].map((_, colIndex) => matrix.map(row => row[colIndex]));
 }
 
+function toBool(value) {
+  const strValue = String(value);
+  return strValue === 'true' || strValue === 'yes' || strValue === '1' ? true : false;
+}
+
 const REPLACE_STATUS = Object.freeze({
   OK: "OK",
   NOT_FOUND: 'NOT_FOUND',
@@ -134,14 +139,14 @@ function tokenize(string) {
   const tokens = [];
 
   let currPos = 0;
-  const matches = Array.from(string.matchAll(/{{[^{}]+}}/g));
+  const matches = Array.from(string.matchAll(/{{([^{}}]+|{[^}]+})}}/g)); // allow placeholders to be in object notation (wrapped in {})
   const numMatches = matches.length;
   const stringLength = string.length;
 
   for (let i=0; i<numMatches; i++) {
     const currMatch = matches[i];
     const nextMatch = i < numMatches-1 ? matches[i + 1] : null;
-    const key = currMatch[0].replace(/{{|}}/g, "");
+    const key = currMatch[0].replace(/^{{|}}$/g, "");
     if (currPos < currMatch.index) {
       tokens.push({
         raw: string.slice(currPos, currMatch.index),
@@ -194,13 +199,23 @@ function interpolateTemplateString(templateString, dataRow, columnsMap, cachedMa
     let replacedWith = cachedMapValue != null ? cachedMapValue : "";
     const dataRowIndex = columnsMap.get(key);
     const inDataRow = Array.isArray(dataRow) && dataRowIndex != null && dataRowIndex >= 0; 
-    replacedWith = inDataRow ? dataRow[dataRowIndex] : "";
+    if (inDataRow) {
+      replacedWith = dataRow[dataRowIndex];
+    }
     token.replacedWith = replacedWith;
     token.status = inCachedMap || inDataRow ? REPLACE_STATUS.OK : REPLACE_STATUS.NOT_FOUND;
     return replacedWith;
   });
 
   return { interpolated: interpolated.join(""), tokens };
+}
+
+function getCachedMap() {
+  const mapping = {
+    NOW: (() => new Date().toLocaleString())()
+  };
+  const map = new Map(Object.entries(mapping));
+  return map;
 }
 
 function fillTemplateSettingsTestCol() {
@@ -212,19 +227,163 @@ function fillTemplateSettingsTestCol() {
   let testValues = testRange.getValues();
   Logger.log(testValues);
 
+  let { metaColumnsMap, metaData, mergeColumnsMap, mergeData, mergeDisplayData } = getMergeData();
+  const dataRow = mergeData.length > 0 ? mergeData[0] : null;
+  const cachedMap = getCachedMap();
+
+  const filledTemplateSettings = {};
   for (let [k, v] of Object.entries(templateSettings)) {
-    if (k.endsWith(ID_MATCHER) && String(v) != '') testValues[rowMap.get(k)][0] = getFileNameFromId(v);
-    else if (k.endsWith(FORMAT_MATCHER) && String(v) != '') testValues[rowMap.get(k)][0] = v;
-    else testValues[rowMap.get(k)][0] = v;
+    let testValueRow = testValues[rowMap.get(k)];
+    if (k.endsWith(ID_MATCHER) && String(v) != '') testValueRow[0] = getFileNameFromId(v);
+    else if (k.endsWith(FORMAT_MATCHER) && String(v) != '') testValueRow[0] = interpolateTemplateString(v, dataRow, mergeColumnsMap, cachedMap).interpolated;
+    else testValueRow[0] = v;
+    filledTemplateSettings[k] = testValueRow[0];
   }
 
   testRange.setValues(testValues);
   Logger.log((testValues));
+  return filledTemplateSettings;
+}
+
+function merge() {
+  const { rowMap, templateSettings } = loadTemplateSettings(true);
+  const filledTemplateSettings = fillTemplateSettingsTestCol();
+  const cachedMap = getCachedMap();
+  let { metaColumnsMap, metaData, mergeColumnsMap, mergeData, mergeDisplayData } = getMergeData();
+
+  if (templateSettings[TSETTING_DOC_TEMPLATE_ID] === '') {
+    const message = `Missing ${TSETTING_DOC_FOLDER_ID}!`;
+    G.ui.alert(TOASTER.ERROR, message, G.ui.ButtonSet.OK);
+    Logger.log(TOASTER.ERROR + " " + message);
+    return;
+  }
+
+  if (mergeData.length == 0) {
+    const message = `No data to merge. Check '${MERGE_SETTINGS_SHEET}' sheet!`;
+    G.ui.alert(TOASTER.ERROR, message, G.ui.ButtonSet.OK);
+    Logger.log(TOASTER.ERROR + " " + message);
+    return;
+  }
+
+  {
+    const file = DriveApp.getFileById(templateSettings[TSETTING_DOC_TEMPLATE_ID]);
+    const originalFolderId = file.getParents().next().getId();
+    const templateFolderId = templateSettings[TSETTING_DOC_FOLDER_ID] !== '' ? originalFolderId : templateSettings[TSETTING_DOC_FOLDER_ID];
+    const pdfFolderId = templateSettings[TSETTING_PDF_FOLDER_ID] !== '' ? originalFolderId : templateSettings[TSETTING_PDF_FOLDER_ID];
+    const templateFolder = DriveApp.getFolderById(templateFolderId);
+    const pdfFolder = DriveApp.getFolderById(pdfFolderId);
+    const copy = file.makeCopy("copy 00", templateFolder);
+
+    const doc = DocumentApp.openById(copy.getId());
+    const body = doc.getBody();
+
+    for (let rowIndex=0; rowIndex < 1; rowIndex++) {
+      const dataRow = mergeData[rowIndex];
+      Logger.log(`Row ${rowIndex}`);
+      const docPlaceholders = findPlaceholders(body);
+      const matchedPlaceholders = docPlaceholders.map((r) => {
+        const text = r.getElement().asText().getText();
+        const matched = text.slice(r.getStartOffset(), r.getEndOffsetInclusive() + 1);
+        return { placeholder: matched, rangeElement: r };
+      });
+      Logger.log(JSON.stringify(matchedPlaceholders));
+
+      /*
+      for (let {placeholder, rangeElement} of matchedPlaceholders) {
+        const textToReplace = placeholder;
+        const replacement = interpolateTemplateString(textToReplace, dataRow, mergeColumnsMap, cachedMap);
+        const textElement = rangeElement.getElement().asText();
+        textElement.deleteText(rangeElement.getStartOffset(), rangeElement.getEndOffsetInclusive());
+        textElement.insertText(rangeElement.getStartOffset(), replacement.interpolated);
+      }
+      */
+
+      for (let r of findAllText(body, "{{([^{}}]+|{[^}]+})}}")) {
+        const textElement = r.getElement().asText();
+        const text = textElement.getText();
+        const start = r.getStartOffset();
+        const endInclusive = r.getEndOffsetInclusive();
+        const matched = text.slice(start, endInclusive + 1);
+
+        const textToReplace = matched;
+        const replacement = interpolateTemplateString(textToReplace, dataRow, mergeColumnsMap, cachedMap);
+
+        // save formatting
+        const attrs = textElement.getAttributes(start);
+        Logger.log(JSON.stringify([matched, start, endInclusive]));
+        Logger.log(JSON.stringify(["BEFORE:", textElement.getAttributes(start)]));
+
+        textElement.deleteText(start, endInclusive);
+        textElement.insertText(start, replacement.interpolated);
+        const newEndInclusive = start + replacement.interpolated.length - 1;
+
+        // reapply formatting
+        textElement.setAttributes(start, newEndInclusive, attrs);
+        // explicitly restore troublesome attributes
+        textElement.setForegroundColor(start, newEndInclusive, attrs[DocumentApp.Attribute.FOREGROUND_COLOR]);
+        textElement.setUnderline(start, newEndInclusive, attrs[DocumentApp.Attribute.UNDERLINE]);
+        Logger.log(JSON.stringify(["AFTER:", textElement.getAttributes(start)]));
+      }
+
+      /*
+      for (let {placeholder, rangeElement} of matchedPlaceholders) {
+        const textToReplace = placeholder;
+        const replacement = interpolateTemplateString(textToReplace, dataRow, mergeColumnsMap, cachedMap);
+        //body.replaceText(textToReplace, replacement.interpolated);
+        rangeElement.getElement().asText().setText("");
+      }
+      */
+
+      /*
+      for (let [placeholder, placeholderColIdx] of mergeColumnsMap.entries()) {
+        const textToReplace = `{{${placeholder}}}`;
+        const newValue = dataRow[placeholderColIdx];
+        const hasPlaceholder = body.findText(textToReplace) != null;
+        Logger.log(`  Replace '${placeholder}' with '${newValue}'  [${hasPlaceholder ? 'FOUND' : 'NOT FOUND'}]'`);
+        body.replaceText(textToReplace, newValue);
+      }
+      */
+    }
+
+    doc.saveAndClose();
+  } /*catch (error) {
+    G.ui.alert(TOASTER.ERROR, error, G.ui.ButtonSet.OK);
+    throw error;
+  }*/
+}
+
+function findPlaceholders(body) {
+  return Array.from(findAllText(body, "{{([^{}}]+|{[^}]+})}}"));
+}
+
+/**
+ * Generator that finds all the entries when searching.
+ * @param {DocumentApp.Body} body Body of the file.
+ * @param {string} text Text to find.
+ * @returns {Iterator.<DocumentApp.RangeElement>}
+ */
+function* findAllText(body, text) {
+  let entry = body.findText(text);
+  while(entry != null) {
+    yield entry;
+    entry = body.findText(text, entry);
+  }
+}
+
+function getChart(sheetName) {
+  sheetName = "Chart 1";
+  const sheet = G.ss.getSheetByName(sheetName);
+  const charts = sheet.getCharts();
+  if (charts.length > 0) {
+    return charts[0].getAs
+  } else {
+    return null;
+  }
 }
 
 // exported functions
 var AzMM = {
   onOpen: onOpen,
   showTemplateSettings: showTemplateSettings,
-  merge: NO_OP
+  merge: merge
 }
