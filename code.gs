@@ -298,7 +298,10 @@ function merge() {
       }
       */
 
-      for (let r of findAllText(body, "{{([^{}}]+|{[^}]+})}}")) {
+      const matches = [...findAllText(body, "{{([^{}}]+|{[^}]+})}}")];
+      for (let i = matches.length - 1; i >= 0; i--) {
+        const r = matches[i];
+      //for (let r of findAllText(body, "{{([^{}}]+|{[^}]+})}}")) {
         const textElement = r.getElement().asText();
         const text = textElement.getText();
         const start = r.getStartOffset();
@@ -309,19 +312,71 @@ function merge() {
         const replacement = interpolateTemplateString(textToReplace, dataRow, mergeColumnsMap, cachedMap);
 
         // save formatting
-        const attrs = textElement.getAttributes(start);
+        const attrs = Object.assign({}, textElement.getAttributes(start));
         Logger.log(JSON.stringify([matched, start, endInclusive]));
         Logger.log(JSON.stringify(["BEFORE:", textElement.getAttributes(start)]));
+
+        /*
+        const before = textElement.getText().substring(0, start);
+        const after = textElement.getText().substring(endInclusive + 1);
+
+        textElement.setText(before + replacement.interpolated + after);
+        */
+
+        /*
+        // save attributes
+        const fg = textElement.getForegroundColor(start);
+        const bg = textElement.getBackgroundColor(start);
+        const underline = textElement.isUnderline(start);
+        const bold = textElement.isBold(start);
+        const italic = textElement.isItalic(start);
+        const fontFamily = textElement.getFontFamily(start);
+        const fontSize = textElement.getFontSize(start);
+        const link = textElement.getLinkUrl(start);
+        */
 
         textElement.deleteText(start, endInclusive);
         textElement.insertText(start, replacement.interpolated);
         const newEndInclusive = start + replacement.interpolated.length - 1;
+        
+        /*
+        // restore attributes
+        textElement.setForegroundColor(start, newEndInclusive, fg);
+        textElement.setBackgroundColor(start, newEndInclusive, bg);
+        textElement.setUnderline(start, newEndInclusive, underline);
+        textElement.setBold(start, newEndInclusive, bold);
+        textElement.setItalic(start, newEndInclusive, italic);
+        textElement.setFontFamily(start, newEndInclusive, fontFamily);
+        textElement.setFontSize(start, newEndInclusive, fontSize);
+        if (link) {
+          textElement.setLinkUrl(start, newEndInclusive, link);
+        }
+        */
+
+        /*
+        const newStart = before.length;
+        const newEnd = newStart + replacement.interpolated.length - 1;
+
+        textElement.setAttributes(newStart, newEnd, attrs);
+        */
 
         // reapply formatting
-        textElement.setAttributes(start, newEndInclusive, attrs);
+        //textElement.setAttributes(start, newEndInclusive, attrs);
+
         // explicitly restore troublesome attributes
-        textElement.setForegroundColor(start, newEndInclusive, attrs[DocumentApp.Attribute.FOREGROUND_COLOR]);
-        textElement.setUnderline(start, newEndInclusive, attrs[DocumentApp.Attribute.UNDERLINE]);
+        //textElement.setForegroundColor(start, newEndInclusive, attrs[DocumentApp.Attribute.FOREGROUND_COLOR]);
+        //textElement.setUnderline(start, newEndInclusive, attrs[DocumentApp.Attribute.UNDERLINE]);
+        Logger.log(textElement.isUnderline(start));
+        Logger.log(textElement.getForegroundColor(start));
+
+        for (const [attr, value] of Object.entries(attrs)) {
+          if (value != null) {
+            textElement.setAttributes(start, newEndInclusive, {
+              [attr]: value
+            });
+          }
+        }
+
         Logger.log(JSON.stringify(["AFTER:", textElement.getAttributes(start)]));
       }
 
