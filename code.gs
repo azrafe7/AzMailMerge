@@ -1,6 +1,9 @@
 const MERGE_SETTINGS_SHEET = 'merge_settings';
 const TEMPLATE_SETTINGS_TEST_COL = 'TEST';
 
+const DOC_PLACEHOLDERS_PATTERN = "{{([^{}}]+|{[^}]+})}}";
+const TOKENIZER_REGEXP = new RegExp("{{([^{}}]+|{[^}]+})}}", "g"); // allow placeholders to be in object notation (wrapped in {})
+
 function NO_OP() {}
 
 // create menu
@@ -120,7 +123,7 @@ function transpose(matrix) {
 }
 
 function toBool(value) {
-  const strValue = String(value);
+  const strValue = String(value).toLowerCase();
   return strValue === 'true' || strValue === 'yes' || strValue === '1' ? true : false;
 }
 
@@ -139,7 +142,7 @@ function tokenize(string) {
   const tokens = [];
 
   let currPos = 0;
-  const matches = Array.from(string.matchAll(/{{([^{}}]+|{[^}]+})}}/g)); // allow placeholders to be in object notation (wrapped in {})
+  const matches = Array.from(string.matchAll(TOKENIZER_REGEXP)); // allow placeholders to be in object notation (wrapped in {})
   const numMatches = matches.length;
   const stringLength = string.length;
 
@@ -234,9 +237,19 @@ function fillTemplateSettingsTestCol() {
   const filledTemplateSettings = {};
   for (let [k, v] of Object.entries(templateSettings)) {
     let testValueRow = testValues[rowMap.get(k)];
-    if (k.endsWith(ID_MATCHER) && String(v) != '') testValueRow[0] = getFileNameFromId(v);
-    else if (k.endsWith(FORMAT_MATCHER) && String(v) != '') testValueRow[0] = interpolateTemplateString(v, dataRow, mergeColumnsMap, cachedMap).interpolated;
-    else testValueRow[0] = v;
+    if (k.endsWith(ID_MATCHER)) {
+      if (String(v) === '') {
+        testValueRow[0] = getFileNameFromId(templateSettings[TSETTING_DOC_TEMPLATE_ID]);
+      } else {
+        testValueRow[0] = getFileNameFromId(v);
+      }
+    } else if (k.endsWith(FORMAT_MATCHER)) {
+      if (String(v) === '') {
+        testValueRow[0] = filledTemplateSettings[TSETTING_DOC_TEMPLATE_ID];
+      } else {
+        testValueRow[0] = interpolateTemplateString(v, dataRow, mergeColumnsMap, cachedMap).interpolated;
+      }
+    } else testValueRow[0] = v;
     filledTemplateSettings[k] = testValueRow[0];
   }
 
@@ -266,22 +279,29 @@ function merge() {
   }
 
   {
+    Logger.log(`Opening template '${templateSettings[TSETTING_DOC_TEMPLATE_ID]}'`);
     const file = DriveApp.getFileById(templateSettings[TSETTING_DOC_TEMPLATE_ID]);
+    const fileName = filledTemplateSettings[TSETTING_DOC_TEMPLATE_ID];
+    Logger.log(`Retrieving folders`);
     const originalFolderId = file.getParents().next().getId();
     const templateFolderId = templateSettings[TSETTING_DOC_FOLDER_ID] !== '' ? originalFolderId : templateSettings[TSETTING_DOC_FOLDER_ID];
     const pdfFolderId = templateSettings[TSETTING_PDF_FOLDER_ID] !== '' ? originalFolderId : templateSettings[TSETTING_PDF_FOLDER_ID];
     const templateFolder = DriveApp.getFolderById(templateFolderId);
     const pdfFolder = DriveApp.getFolderById(pdfFolderId);
-    const copy = file.makeCopy("copy 00", templateFolder);
-
-    const doc = DocumentApp.openById(copy.getId());
-    const body = doc.getBody();
-
+  
     for (let rowIndex=0; rowIndex < 1; rowIndex++) {
-      const dataRow = mergeData[rowIndex];
-      Logger.log(`Row ${rowIndex}`);
+      const copyName = String(templateSettings[TSETTING_DOC_NAME_FORMAT]) === '' ? fileName + '_' + String(rowIndex).padStart(2, "0") : filledTemplateSettings[TSETTING_DOC_NAME_FORMAT];
+      const copy = file.makeCopy(copyName, templateFolder);
+      const pdfName = String(templateSettings[TSETTING_PDF_NAME_FORMAT]) === '' ? fileName + '_' + String(rowIndex).padStart(2, "0") : filledTemplateSettings[TSETTING_PDF_NAME_FORMAT];
 
-      const matches = findPlaceholders(body);
+      const doc = DocumentApp.openById(copy.getId());
+      const body = doc.getBody();
+
+      const dataRow = mergeData[rowIndex];
+
+      Logger.log(`Processing row ${rowIndex}`);
+
+      const matches = findPlaceholders(body, DOC_PLACEHOLDERS_PATTERN);
       // iterate matches backwards
       for (let i = matches.length - 1; i >= 0; i--) {
         const r = matches[i];
@@ -315,17 +335,44 @@ function merge() {
 
         Logger.log(JSON.stringify(["AFTER:", textElement.getAttributes(start)]));
       }
+
+      doc.saveAndClose();
+      Logger.log(`Filled doc saved as '${copyName}' (in '${filledTemplateSettings[TSETTING_DOC_FOLDER_ID]}' folder)`);
+
+      // convert to pdf
+      let pdfFile = null;
+      if (toBool(filledTemplateSettings[TSETTING_CREATE_PDF])) {
+        Logger.log(`Converting doc to pdf as '${pdfName}' (in '${filledTemplateSettings[TSETTING_PDF_FOLDER_ID]}' folder)`);
+        try {
+          pdfFile = convertDocToPdf(pdfName, doc, pdfFolder);
+        } catch (error) {
+          G.ui.alert(TOASTER.ERROR, error, G.ui.ButtonSet.OK);
+          throw error;
+        }
+      }
+
+      // delete doc copy
+      if (toBool(!filledTemplateSettings[TSETTING_KEEP_DOC])) {
+        Logger.log(`Deleting doc copy '${copyName}'`);
+        doc.moveToTrash();
+      }
     }
 
-    doc.saveAndClose();
   } /*catch (error) {
     G.ui.alert(TOASTER.ERROR, error, G.ui.ButtonSet.OK);
     throw error;
   }*/
 }
 
-function findPlaceholders(body) {
-  return Array.from(findAllText(body, "{{([^{}}]+|{[^}]+})}}"));
+function convertDocToPdf(pdfName, doc, outputFolder) {
+  const blob = doc.getAs('application/pdf');
+  const pdfFile = outputFolder.createFile(blob);
+  pdfFile.setName(pdfName);
+  return pdfFile;
+}
+
+function findPlaceholders(body, pattern) {
+  return Array.from(findAllText(body, DOC_PLACEHOLDERS_PATTERN));
 }
 
 /**
