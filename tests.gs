@@ -22,20 +22,29 @@ function test_A1Notation() {
 }
 
 function test_interpolateTemplateString() {
-  const INDENT = 2;
-  const testStrings = [];
-  let cachedMap = null;
+  const INDENT = 0;
+  let functionsMap = getFunctionsMap();
   const template1 = "before{{name}} - {{NOW}}after";
   const template2 = "before{{{x:32}}} - {{NOW}}after {{chart+}}";
+  const template3 = "before{{{x:32}}} - {{NOW}}after {{ROW_INDEX}} {{ROW_NUMBER}}";
+  const template4 = 'before{{{x:32}}} - {{NOW}}after {{{"type":"NUMBER", "value":12, "format":"%03.2f"}}} {{ROW_NUMBER}}';
+  const testStrings = [template1, template2, template3, template4];
   let { metaColumnsMap, metaData, mergeColumnsMap, mergeData, mergeDisplayData } = getMergeData();
   const dataRow = mergeData.length > 0 ? mergeData[0] : null;
-  for (let template of [template1, template2]) {
+  const context = { dataRow, columnsMap:mergeColumnsMap };
+  for (let template of testStrings) {
     const tokens = tokenize(template);
-    const res = interpolateTemplateString(template, dataRow, mergeColumnsMap, cachedMap);
+    const res = interpolateTemplateString(template, context, functionsMap);
     Logger.log("TEST  : " + JSON.stringify(template));
-    Logger.log("TOKENS: " + JSON.stringify(tokenize(template), null, INDENT));
+    Logger.log("TOKENS: " + JSON.stringify(tokens, null, INDENT));
     Logger.log("INTERP: " + JSON.stringify(res, null, INDENT));
     Logger.log("RESULT: " + res.interpolated);
   }
 }
 
+function test_Utilities() {
+  const num = Number("1");
+  Logger.log(Utilities.formatString("%2.3f", num));
+  Logger.log(Utilities.formatString("%03.2f", num));
+  Logger.log(Utilities.formatString("%03d", num));
+}

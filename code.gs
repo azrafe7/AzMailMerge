@@ -180,45 +180,92 @@ function tokenize(string) {
   return tokens;
 }
 
-function interpolateTemplateString(templateString, dataRow, columnsMap, functionsMap) {
+function evaluateToken(token, context, functionsMap, level=0) {
+  const INDENT = "".padStart(level * 2, " ");
+  Logger.log("Level " + level);
+  let {
+    args,
+    dataRow,
+    rowIndex,
+    columnsMap,
+    rangeElement,
+    document,
+    body,
+  } = context;
+
+  let key = token.key;
+  processedToken = Object.assign({}, token, {
+    replacedWith: "",
+    status: REPLACE_STATUS.UNKNOWN
+  });
+  
+  if (key == null) {
+    processedToken.replacedWith = token.raw;
+    processedToken.status = REPLACE_STATUS.KEPT_RAW;
+    return processedToken;
+  }
+
+  // handle keys with JSON
+  let parsedKey = null;
+  if (key.startsWith("{")) {
+    try {
+      parsedKey = JSON.parse(key);
+      if (parsedKey && parsedKey.type) {
+        key = parsedKey.type;
+        context.args = parsedKey;
+      }
+    } catch (error) {
+      Logger.log(`${INDENT}Error parsing token ${JSON.stringify(token)}`);
+    }
+  }
+
+  const fn = functionsMap.get(key);
+  const inFunctionsMap = fn != null;   
+  let replacedWith = inFunctionsMap ? fn(context) : processedToken.raw;
+  
+  const dataRowIndex = columnsMap.get(key);
+  const inDataRow = Array.isArray(dataRow) && dataRowIndex != null && dataRowIndex >= 0; 
+  if (inDataRow) {
+    Logger.log(`${INDENT}Interpolate data '${dataRow[dataRowIndex]}'`);
+    const res = interpolateTemplateString(dataRow[dataRowIndex], context, functionsMap, level + 1);
+    Logger.log(`${INDENT}Interpolated res '${JSON.stringify(res)}'`);
+    return res;
+  }
+
+  processedToken.replacedWith = replacedWith;
+  processedToken.status = inFunctionsMap || inDataRow ? REPLACE_STATUS.OK : REPLACE_STATUS.NOT_FOUND;
+  return processedToken;
+}
+
+function interpolateTemplateString(templateString, context, functionsMap, level=0) {
+  const INDENT = "".padStart(level * 2, " ");
+  let {
+    args,
+    dataRow,
+    rowIndex,
+    columnsMap,
+    rangeElement,
+    document,
+    body,
+  } = context;
+
   if (functionsMap == null) functionsMap = new Map();
   if (columnsMap == null) columnsMap = new Map();
   let tokens = tokenize(templateString);
-  let interpolated = tokens.map((token) => {
-    const key = token.key;
-    token = Object.assign(token, {
-      replacedWith: "",
-      status: REPLACE_STATUS.UNKNOWN
-    });
-    
-    if (key == null) {
-      token.replacedWith = token.raw;
-      token.status = REPLACE_STATUS.KEPT_RAW;
-      return token.replacedWith;
-    }
+  let processedTokens = tokens.map((token) => evaluateToken(token, Object.assign({}, context), functionsMap, level));
+  const interpolated = processedTokens.map((token) => token.replacedWith);
 
-    const functionsMapValue = functionsMap.get(key);
-    const infunctionsMap = functionsMapValue != null;   
-    let replacedWith = functionsMapValue != null ? functionsMapValue : "";
-    const dataRowIndex = columnsMap.get(key);
-    const inDataRow = Array.isArray(dataRow) && dataRowIndex != null && dataRowIndex >= 0; 
-    if (inDataRow) {
-      replacedWith = dataRow[dataRowIndex];
-    }
-    token.replacedWith = replacedWith;
-    token.status = infunctionsMap || inDataRow ? REPLACE_STATUS.OK : REPLACE_STATUS.NOT_FOUND;
-    return replacedWith;
-  });
-
-  return { interpolated: interpolated.join(""), tokens };
+  return { interpolated: interpolated.join(""), processedTokens };
 }
 
 function getFunctionsMap() {
-  const mapping = {
-    NOW: (() => new Date().toLocaleString())()
-  };
-  const map = new Map(Object.entries(mapping));
-  return map;
+  return new Map([
+    ["NOW", ({}) => new Date().toLocaleString()],
+    ["ROW_INDEX", ({rowIndex}) => rowIndex ?? 0],
+    ["NUMBER", ({args: {type, value, format} = {}}) => {
+      return Utilities.formatString(format, Number(value)); 
+    }],
+  ]);
 }
 
 function fillTemplateSettingsTestCol() {
@@ -234,6 +281,11 @@ function fillTemplateSettingsTestCol() {
   const dataRow = mergeData.length > 0 ? mergeData[0] : null;
   const functionsMap = getFunctionsMap();
 
+  const context = {
+    dataRow,
+    columnsMap: mergeColumnsMap,
+  };
+
   const filledTemplateSettings = {};
   for (let [k, v] of Object.entries(templateSettings)) {
     let testValueRow = testValues[rowMap.get(k)];
@@ -247,7 +299,7 @@ function fillTemplateSettingsTestCol() {
       if (String(v) === '') {
         testValueRow[0] = filledTemplateSettings[TSETTING_DOC_TEMPLATE_ID];
       } else {
-        testValueRow[0] = interpolateTemplateString(v, dataRow, mergeColumnsMap, functionsMap).interpolated;
+        testValueRow[0] = interpolateTemplateString(v, context, functionsMap).interpolated;
       }
     } else testValueRow[0] = v;
     filledTemplateSettings[k] = testValueRow[0];
@@ -287,7 +339,7 @@ function merge() {
     const templateFolderId = templateSettings[TSETTING_DOC_FOLDER_ID] !== '' ? originalFolderId : templateSettings[TSETTING_DOC_FOLDER_ID];
     const pdfFolderId = templateSettings[TSETTING_PDF_FOLDER_ID] !== '' ? originalFolderId : templateSettings[TSETTING_PDF_FOLDER_ID];
     const templateFolder = DriveApp.getFolderById(templateFolderId);
-    const pdfFolder = DriveApp.getFolderById(pdfFolderId);
+    const pdfFolder = pdfFolderId === templateFolderId ? templateFolder : DriveApp.getFolderById(pdfFolderId);
   
     for (let rowIndex=0; rowIndex < 1; rowIndex++) {
       const copyName = String(templateSettings[TSETTING_DOC_NAME_FORMAT]) === '' ? fileName + '_' + String(rowIndex).padStart(2, "0") : filledTemplateSettings[TSETTING_DOC_NAME_FORMAT];
@@ -311,8 +363,17 @@ function merge() {
         const endInclusive = r.getEndOffsetInclusive();
         const matched = text.slice(start, endInclusive + 1);
 
+        const context = {
+          dataRow,
+          rowIndex,
+          columnsMap: mergeColumnsMap,
+          rangeElement: r,
+          document: copy,
+          body,
+        };
+
         const textToReplace = matched;
-        const replacement = interpolateTemplateString(textToReplace, dataRow, mergeColumnsMap, functionsMap);
+        const replacement = interpolateTemplateString(textToReplace, context, functionsMap);
 
         // save formatting attributes (into a clone)
         const attrs = Object.assign({}, textElement.getAttributes(start));
@@ -325,11 +386,13 @@ function merge() {
         const newEndInclusive = start + replacement.interpolated.length - 1;
         
         // restore attributes (only non null values, to prevent not inheriting attributes from parent, and messing things up!)
-        for (const [attr, value] of Object.entries(attrs)) {
-          if (value != null) {
-            textElement.setAttributes(start, newEndInclusive, {
-              [attr]: value
-            });
+        if (newEndInclusive > start) {
+          for (const [attr, value] of Object.entries(attrs)) {
+            if (value != null) {
+              textElement.setAttributes(start, newEndInclusive, {
+                [attr]: value
+              });
+            }
           }
         }
 
@@ -352,9 +415,9 @@ function merge() {
       }
 
       // delete doc copy
-      if (toBool(!filledTemplateSettings[TSETTING_KEEP_DOC])) {
+      if (!toBool(filledTemplateSettings[TSETTING_KEEP_DOC])) {
         Logger.log(`Deleting doc copy '${copyName}'`);
-        doc.moveToTrash();
+        copy.setTrashed(true);
       }
     }
 
