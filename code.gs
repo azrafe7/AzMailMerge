@@ -180,8 +180,8 @@ function tokenize(string) {
   return tokens;
 }
 
-function interpolateTemplateString(templateString, dataRow, columnsMap, cachedMap) {
-  if (cachedMap == null) cachedMap = new Map();
+function interpolateTemplateString(templateString, dataRow, columnsMap, functionsMap) {
+  if (functionsMap == null) functionsMap = new Map();
   if (columnsMap == null) columnsMap = new Map();
   let tokens = tokenize(templateString);
   let interpolated = tokens.map((token) => {
@@ -197,23 +197,23 @@ function interpolateTemplateString(templateString, dataRow, columnsMap, cachedMa
       return token.replacedWith;
     }
 
-    const cachedMapValue = cachedMap.get(key);
-    const inCachedMap = cachedMapValue != null;   
-    let replacedWith = cachedMapValue != null ? cachedMapValue : "";
+    const functionsMapValue = functionsMap.get(key);
+    const infunctionsMap = functionsMapValue != null;   
+    let replacedWith = functionsMapValue != null ? functionsMapValue : "";
     const dataRowIndex = columnsMap.get(key);
     const inDataRow = Array.isArray(dataRow) && dataRowIndex != null && dataRowIndex >= 0; 
     if (inDataRow) {
       replacedWith = dataRow[dataRowIndex];
     }
     token.replacedWith = replacedWith;
-    token.status = inCachedMap || inDataRow ? REPLACE_STATUS.OK : REPLACE_STATUS.NOT_FOUND;
+    token.status = infunctionsMap || inDataRow ? REPLACE_STATUS.OK : REPLACE_STATUS.NOT_FOUND;
     return replacedWith;
   });
 
   return { interpolated: interpolated.join(""), tokens };
 }
 
-function getCachedMap() {
+function getFunctionsMap() {
   const mapping = {
     NOW: (() => new Date().toLocaleString())()
   };
@@ -232,7 +232,7 @@ function fillTemplateSettingsTestCol() {
 
   let { metaColumnsMap, metaData, mergeColumnsMap, mergeData, mergeDisplayData } = getMergeData();
   const dataRow = mergeData.length > 0 ? mergeData[0] : null;
-  const cachedMap = getCachedMap();
+  const functionsMap = getFunctionsMap();
 
   const filledTemplateSettings = {};
   for (let [k, v] of Object.entries(templateSettings)) {
@@ -247,7 +247,7 @@ function fillTemplateSettingsTestCol() {
       if (String(v) === '') {
         testValueRow[0] = filledTemplateSettings[TSETTING_DOC_TEMPLATE_ID];
       } else {
-        testValueRow[0] = interpolateTemplateString(v, dataRow, mergeColumnsMap, cachedMap).interpolated;
+        testValueRow[0] = interpolateTemplateString(v, dataRow, mergeColumnsMap, functionsMap).interpolated;
       }
     } else testValueRow[0] = v;
     filledTemplateSettings[k] = testValueRow[0];
@@ -261,7 +261,7 @@ function fillTemplateSettingsTestCol() {
 function merge() {
   const { rowMap, templateSettings } = loadTemplateSettings(true);
   const filledTemplateSettings = fillTemplateSettingsTestCol();
-  const cachedMap = getCachedMap();
+  const functionsMap = getFunctionsMap();
   let { metaColumnsMap, metaData, mergeColumnsMap, mergeData, mergeDisplayData } = getMergeData();
 
   if (templateSettings[TSETTING_DOC_TEMPLATE_ID] === '') {
@@ -312,12 +312,12 @@ function merge() {
         const matched = text.slice(start, endInclusive + 1);
 
         const textToReplace = matched;
-        const replacement = interpolateTemplateString(textToReplace, dataRow, mergeColumnsMap, cachedMap);
+        const replacement = interpolateTemplateString(textToReplace, dataRow, mergeColumnsMap, functionsMap);
 
         // save formatting attributes (into a clone)
         const attrs = Object.assign({}, textElement.getAttributes(start));
-        Logger.log(JSON.stringify([matched, start, endInclusive]));
-        Logger.log(JSON.stringify(["BEFORE:", textElement.getAttributes(start)]));
+        //Logger.log(JSON.stringify([matched, start, endInclusive]));
+        //Logger.log(JSON.stringify(["BEFORE:", textElement.getAttributes(start)]));
 
         // delete text and insert replacement
         textElement.deleteText(start, endInclusive);
@@ -333,7 +333,7 @@ function merge() {
           }
         }
 
-        Logger.log(JSON.stringify(["AFTER:", textElement.getAttributes(start)]));
+        //Logger.log(JSON.stringify(["AFTER:", textElement.getAttributes(start)]));
       }
 
       doc.saveAndClose();
