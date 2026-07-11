@@ -1,7 +1,7 @@
 function getFunctionsMap() {
   return new Map([
     ["NOW", () => new Date().toLocaleString()],
-    ["ROW_INDEX", ({ rowIndex }) => rowIndex + 1],
+    ["ROW_INDEX", ({ rowIndex }) => (rowIndex ?? 0) + 1],
   ]);
 }
 
@@ -28,12 +28,11 @@ class Interpolator {
     context = {},
     functions = new Map(),
     commands = new Map(),
-    columnsMap = new Map(),
   } = {}) {
     this.context = context;
     this.functions = functions;
     this.commands = commands;
-    this.columnsMap = columnsMap;
+    this.columnsMap = context.columnsMap ? context.columnsMap : new Map();
   }
 
   interpolate(template) {
@@ -204,13 +203,12 @@ function test_Interpolator() {
   ];
   let { metaColumnsMap, metaData, mergeColumnsMap, mergeData, mergeDisplayData } = getMergeData();
   const dataRow = mergeData.length > 0 ? mergeData[0] : null;
-  const context = { dataRow, rowIndex: 12 };
+  const context = { dataRow, rowIndex: 12, columnsMap:mergeColumnsMap };
   for (let template of templates) {
     const interpolator = new Interpolator({
       context,
       functions: getFunctionsMap(),
       commands: getCommandsMap(),
-      columnsMap: mergeColumnsMap,
     });
 
     const result = interpolator.interpolate(template);
