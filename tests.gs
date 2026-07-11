@@ -21,24 +21,30 @@ function test_A1Notation() {
   }
 }
 
-function test_interpolateTemplateString() {
+
+function test_Interpolator() {
   const INDENT = 0;
-  let functionsMap = getFunctionsMap();
-  const template1 = "before{{name}} - {{NOW}}after";
-  const template2 = "before{{{x:32}}} - {{NOW}}after {{chart+}}";
-  const template3 = "before{{{x:32}}} - {{NOW}}after {{ROW_INDEX}} {{ROW_NUMBER}}";
-  const template4 = 'before{{{x:32}}} - {{NOW}}after {{{"type":"NUMBER", "value":12, "format":"%03.2f"}}} {{ROW_NUMBER}}';
-  const testStrings = [template1, template2, template3, template4];
+  const templates = [
+    "before{{name}} - {{NOW}}after",
+    "before{{cod_fisc}} - {{NOW}}after",
+    "before{{{x:32}}} - {{NOW}}after {{chart+}}",
+    "before{{{x:32}}} - {{NOW}}after {{ROW_INDEX}} {{ROW_NUMBER}}",
+    'before{{{x:32}}} - {{NOW}}after {{{"type":"NUMBER", "value":12, "format":"%03.2f"}}} {{ROW_NUMBER}}',
+    '{{{"type":"CHART", "value":12, "format":"%03.2f"}}}',
+  ];
   let { metaColumnsMap, metaData, mergeColumnsMap, mergeData, mergeDisplayData } = getMergeData();
   const dataRow = mergeData.length > 0 ? mergeData[0] : null;
-  const context = { dataRow, columnsMap:mergeColumnsMap };
-  for (let template of testStrings) {
-    const tokens = tokenize(template);
-    const res = interpolateTemplateString(template, context, functionsMap);
+  const context = { dataRow, rowIndex: 12, columnsMap:mergeColumnsMap };
+  for (let template of templates) {
+    const interpolator = new Interpolator({
+      context,
+      functions: getFunctionsMap(),
+      commands: getCommandsMap(),
+    });
+
+    const result = interpolator.interpolate(template);
     Logger.log("TEST  : " + JSON.stringify(template));
-    Logger.log("TOKENS: " + JSON.stringify(tokens, null, INDENT));
-    Logger.log("INTERP: " + JSON.stringify(res, null, INDENT));
-    Logger.log("RESULT: " + res.interpolated);
+    Logger.log("RESULT: " + JSON.stringify(result, null, INDENT));
   }
 }
 

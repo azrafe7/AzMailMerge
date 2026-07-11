@@ -180,94 +180,6 @@ function tokenize(string) {
   return tokens;
 }
 
-function evaluateToken(token, context, functionsMap, level=0) {
-  const INDENT = "".padStart(level * 2, " ");
-  Logger.log("Level " + level);
-  let {
-    args,
-    dataRow,
-    rowIndex,
-    columnsMap,
-    rangeElement,
-    document,
-    body,
-  } = context;
-
-  let key = token.key;
-  processedToken = Object.assign({}, token, {
-    replacedWith: "",
-    status: REPLACE_STATUS.UNKNOWN
-  });
-  
-  if (key == null) {
-    processedToken.replacedWith = token.raw;
-    processedToken.status = REPLACE_STATUS.KEPT_RAW;
-    return processedToken;
-  }
-
-  // handle keys with JSON
-  let parsedKey = null;
-  if (key.startsWith("{")) {
-    try {
-      parsedKey = JSON.parse(key);
-      if (parsedKey && parsedKey.type) {
-        key = parsedKey.type;
-        context.args = parsedKey;
-      }
-    } catch (error) {
-      Logger.log(`${INDENT}Error parsing token ${JSON.stringify(token)}`);
-    }
-  }
-
-  const fn = functionsMap.get(key);
-  const inFunctionsMap = fn != null;   
-  let replacedWith = inFunctionsMap ? fn(context) : processedToken.raw;
-  
-  const dataRowIndex = columnsMap.get(key);
-  const inDataRow = Array.isArray(dataRow) && dataRowIndex != null && dataRowIndex >= 0; 
-  if (inDataRow) {
-    Logger.log(`${INDENT}Interpolate data '${dataRow[dataRowIndex]}'`);
-    const res = interpolateTemplateString(dataRow[dataRowIndex], context, functionsMap, level + 1);
-    Logger.log(`${INDENT}Interpolated res '${JSON.stringify(res)}'`);
-    return res;
-  }
-
-  processedToken.replacedWith = replacedWith;
-  processedToken.status = inFunctionsMap || inDataRow ? REPLACE_STATUS.OK : REPLACE_STATUS.NOT_FOUND;
-  return processedToken;
-}
-
-function interpolateTemplateString(templateString, context, functionsMap, level=0) {
-  const INDENT = "".padStart(level * 2, " ");
-  let {
-    args,
-    dataRow,
-    rowIndex,
-    columnsMap,
-    rangeElement,
-    document,
-    body,
-  } = context;
-
-  if (functionsMap == null) functionsMap = new Map();
-  if (columnsMap == null) columnsMap = new Map();
-  let tokens = tokenize(templateString);
-  let processedTokens = tokens.map((token) => evaluateToken(token, Object.assign({}, context), functionsMap, level));
-  const interpolated = processedTokens.map((token) => token.replacedWith);
-
-  return { interpolated: interpolated.join(""), processedTokens };
-}
-
-function getFunctionsMap() {
-  return new Map([
-    ["NOW", ({}) => new Date().toLocaleString()],
-    ["ROW_INDEX", ({rowIndex}) => rowIndex ?? 0],
-    ["NUMBER", ({args: {type, value, format} = {}}) => {
-      return Utilities.formatString(format, Number(value)); 
-    }],
-  ]);
-}
-
 function fillTemplateSettingsTestCol() {
   let sheet = G.ss.getSheetByName(TEMPLATE_SETTINGS_SHEET);
   const { rowMap, templateSettings } = loadTemplateSettings(true);
@@ -286,6 +198,12 @@ function fillTemplateSettingsTestCol() {
     columnsMap: mergeColumnsMap,
   };
 
+  const interpolator = new Interpolator({
+    context,
+    functions: getFunctionsMap(),
+    commands: getCommandsMap(),
+  });
+
   const filledTemplateSettings = {};
   for (let [k, v] of Object.entries(templateSettings)) {
     let testValueRow = testValues[rowMap.get(k)];
@@ -299,7 +217,7 @@ function fillTemplateSettingsTestCol() {
       if (String(v) === '') {
         testValueRow[0] = filledTemplateSettings[TSETTING_DOC_TEMPLATE_ID];
       } else {
-        testValueRow[0] = interpolateTemplateString(v, context, functionsMap).interpolated;
+        testValueRow[0] = interpolator.interpolate(v).interpolated;
       }
     } else testValueRow[0] = v;
     filledTemplateSettings[k] = testValueRow[0];
@@ -373,7 +291,13 @@ function merge() {
         };
 
         const textToReplace = matched;
-        const replacement = interpolateTemplateString(textToReplace, context, functionsMap);
+        const interpolator = new Interpolator({
+          context,
+          functions: getFunctionsMap(),
+          commands: getCommandsMap(),
+        });
+
+        const replacement = interpolator.interpolate(textToReplace);
 
         // save formatting attributes (into a clone)
         const attrs = Object.assign({}, textElement.getAttributes(start));
