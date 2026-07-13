@@ -23,7 +23,9 @@ function getFunctionsMap() {
   return new Map([
     ["NOW", () => [textItem(new Date().toLocaleString())]],
     ["ROW_INDEX", ({ rowIndex }) => [textItem((rowIndex ?? 0) + 1)]],
+    ["PADDED_ROW_INDEX", ({ rowIndex }) => [textItem(String((rowIndex ?? 0) + 1).padStart(2, "0"))]],
     ["PAGEBREAK", () => [pageBreakItem()]],
+    ["TEMPLATE_NAME", ({ templateName }) => [textItem(templateName)]],
   ]);
 }
 

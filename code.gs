@@ -254,15 +254,17 @@ function merge() {
     const fileName = filledTemplateSettings[TSETTING_DOC_TEMPLATE_ID];
     Logger.log(`Retrieving folders`);
     const originalFolderId = file.getParents().next().getId();
-    const templateFolderId = templateSettings[TSETTING_DOC_FOLDER_ID] !== '' ? originalFolderId : templateSettings[TSETTING_DOC_FOLDER_ID];
-    const pdfFolderId = templateSettings[TSETTING_PDF_FOLDER_ID] !== '' ? originalFolderId : templateSettings[TSETTING_PDF_FOLDER_ID];
+    const templateFolderId = templateSettings[TSETTING_DOC_FOLDER_ID] !== '' ? templateSettings[TSETTING_DOC_FOLDER_ID] : originalFolderId;
+    const pdfFolderId = templateSettings[TSETTING_PDF_FOLDER_ID] !== '' ? templateSettings[TSETTING_PDF_FOLDER_ID] : originalFolderId;
     const templateFolder = DriveApp.getFolderById(templateFolderId);
     const pdfFolder = pdfFolderId === templateFolderId ? templateFolder : DriveApp.getFolderById(pdfFolderId);
   
     const functions = getFunctionsMap();
     const commands = getCommandsMap();
 
-    for (let rowIndex=0; rowIndex < 1; rowIndex++) {
+    let docs = [];
+
+    for (let rowIndex=0; rowIndex < 2; rowIndex++) {
       const copyName = String(templateSettings[TSETTING_DOC_NAME_FORMAT]) === '' ? fileName + '_' + String(rowIndex).padStart(2, "0") : filledTemplateSettings[TSETTING_DOC_NAME_FORMAT];
       const copy = file.makeCopy(copyName, templateFolder);
       const pdfName = String(templateSettings[TSETTING_PDF_NAME_FORMAT]) === '' ? fileName + '_' + String(rowIndex).padStart(2, "0") : filledTemplateSettings[TSETTING_PDF_NAME_FORMAT];
@@ -282,6 +284,7 @@ function merge() {
         const context = {
           dataRow,
           rowIndex,
+          templateName: fileName,
           columnsMap: mergeColumnsMap,
           rangeElement: r,
           document: copy,
