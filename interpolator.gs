@@ -78,8 +78,8 @@ class Interpolator {
     }
 
     return {
-      //items
-      items: this.mergeAdjacentText(items)
+      items
+      //items: this.mergeAdjacentText(items)
     };
   }
 
@@ -300,7 +300,9 @@ function setMatchAttributes(matchElement, attrs, start, endInclusive) {
 
 function replaceMatchText(matchElement, text) {
   // delete text and insert replacement
-  matchElement.textElement.deleteText(matchElement.start, matchElement.endInclusive);
+  if (matchElement.endInclusive > matchElement.start) { // as deleteText(10, 10) will still erase one char
+    matchElement.textElement.deleteText(matchElement.start, matchElement.endInclusive);
+  }
   matchElement.textElement.insertText(matchElement.start, text);
 }
 
@@ -308,6 +310,9 @@ function renderTextItem(item, matchElement) {
   const attrs = getMatchAttributes(matchElement);
   replaceMatchText(matchElement, item.value);
   setMatchAttributes(matchElement, attrs, matchElement.start, matchElement.start + item.value.length - 1);
+  // update the position
+  matchElement.start = matchElement.start + item.value.length;
+  matchElement.endInclusive = matchElement.start;
 }
 
 function renderImageItem(item, matchElement) {
