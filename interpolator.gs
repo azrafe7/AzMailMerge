@@ -299,30 +299,43 @@ function getRangeRuns(range) {
       const richTextValue = richTextValues[row][col];
       const background = backgrounds[row][col];
       for (let run of richTextValue.getRuns()) {
-        let docRun = { text: run.getText() };
+        const text = run.getText();
+        let docRun = { text: text };
         let attrs = {};
+        
+        // defaults
+        attrs["STRIKETHROUGH"] = null;
+        attrs["ITALIC"] = null;
+        attrs["FOREGROUND_COLOR"] = null;
+        attrs["BACKGROUND_COLOR"] = null;
+        attrs["LINK_URL"] = null;
+        attrs["UNDERLINE"] = null,
+        attrs["FONT_SIZE"] = null;
+        attrs["FONT_FAMILY"] = null;
+        attrs["BOLD"] = null;
 
         let start = run.getStartIndex();
         let endInclusive = run.getEndIndex() - 1;
-        if (start >= endInclusive) continue;
-        let textStyle = run.getTextStyle(start, endInclusive);
-        let fontFamily = textStyle.getFontFamily();
-        let fontSize = textStyle.getFontSize();
-        let fontColor = textStyle.getForegroundColorObject().asRgbColor().asHexString();
-        let bold = textStyle.isBold();
-        let italic = textStyle.isItalic();
-        let strikeThrough = textStyle.isStrikethrough();
-        let underLine = textStyle.isUnderline();
+        if (start < endInclusive) {
+          let textStyle = run.getTextStyle(start, endInclusive);
+          let fontFamily = textStyle.getFontFamily();
+          let fontSize = textStyle.getFontSize();
+          let fontColor = textStyle.getForegroundColorObject().asRgbColor().asHexString();
+          let bold = textStyle.isBold();
+          let italic = textStyle.isItalic();
+          let strikeThrough = textStyle.isStrikethrough();
+          let underLine = textStyle.isUnderline();
 
-        attrs["STRIKETHROUGH"] = strikeThrough;
-        attrs["ITALIC"] = italic;
-        attrs["FOREGROUND_COLOR"] = fontColor;
-        attrs["BACKGROUND_COLOR"] = background;
-        attrs["LINK_URL"] = null;
-        attrs["UNDERLINE"] = underLine,
-        attrs["FONT_SIZE"] = fontSize;
-        attrs["FONT_FAMILY"] = fontFamily;
-        attrs["BOLD"] = bold;
+          attrs["STRIKETHROUGH"] = strikeThrough;
+          attrs["ITALIC"] = italic;
+          attrs["FOREGROUND_COLOR"] = fontColor;
+          attrs["BACKGROUND_COLOR"] = background;
+          attrs["LINK_URL"] = null;
+          attrs["UNDERLINE"] = underLine,
+          attrs["FONT_SIZE"] = fontSize;
+          attrs["FONT_FAMILY"] = fontFamily;
+          attrs["BOLD"] = bold;
+        }
 
         docRun.start = start;
         docRun.endInclusive = endInclusive;
@@ -334,6 +347,7 @@ function getRangeRuns(range) {
     docCells.push(docRow);
   }
 
+  Logger.log(JSON.stringify(docCells));
   return docCells;
 }
 
@@ -434,8 +448,9 @@ function renderTableItem(item, matchElement) {
       row.forEach(cell => {
         let tableCell = tableRow.appendTableCell();
         let text = tableCell.editAsText();
+        const cellText = cell.map((run) => run.text).join("");
+        text.setText(cellText);
         cell.forEach(run => {
-          text.appendText(run.text);
           const bg = run.attrs["BACKGROUND_COLOR"];
           run.attrs["BACKGROUND_COLOR"] = null;
           tableCell.setBackgroundColor(bg);
