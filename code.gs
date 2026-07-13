@@ -217,7 +217,7 @@ function fillTemplateSettingsTestCol() {
       if (String(v) === '') {
         testValueRow[0] = filledTemplateSettings[TSETTING_DOC_TEMPLATE_ID];
       } else {
-        testValueRow[0] = interpolator.interpolate(v).interpolated;
+        testValueRow[0] = renderToText(interpolator.interpolate(v).items);
       }
     } else testValueRow[0] = v;
     filledTemplateSettings[k] = testValueRow[0];
@@ -259,6 +259,9 @@ function merge() {
     const templateFolder = DriveApp.getFolderById(templateFolderId);
     const pdfFolder = pdfFolderId === templateFolderId ? templateFolder : DriveApp.getFolderById(pdfFolderId);
   
+    const functions = getFunctionsMap();
+    const commands = getCommandsMap();
+
     for (let rowIndex=0; rowIndex < 1; rowIndex++) {
       const copyName = String(templateSettings[TSETTING_DOC_NAME_FORMAT]) === '' ? fileName + '_' + String(rowIndex).padStart(2, "0") : filledTemplateSettings[TSETTING_DOC_NAME_FORMAT];
       const copy = file.makeCopy(copyName, templateFolder);
@@ -275,11 +278,6 @@ function merge() {
       // iterate matches backwards
       for (let i = matches.length - 1; i >= 0; i--) {
         const r = matches[i];
-        const textElement = r.getElement().asText();
-        const text = textElement.getText();
-        const start = r.getStartOffset();
-        const endInclusive = r.getEndOffsetInclusive();
-        const matched = text.slice(start, endInclusive + 1);
 
         const context = {
           dataRow,
@@ -290,35 +288,15 @@ function merge() {
           body,
         };
 
-        const textToReplace = matched;
         const interpolator = new Interpolator({
           context,
-          functions: getFunctionsMap(),
-          commands: getCommandsMap(),
+          functions,
+          commands,
         });
 
-        const replacement = interpolator.interpolate(textToReplace);
-
-        // save formatting attributes (into a clone)
-        const attrs = Object.assign({}, textElement.getAttributes(start));
-        //Logger.log(JSON.stringify([matched, start, endInclusive]));
-        //Logger.log(JSON.stringify(["BEFORE:", textElement.getAttributes(start)]));
-
-        // delete text and insert replacement
-        textElement.deleteText(start, endInclusive);
-        textElement.insertText(start, replacement.interpolated);
-        const newEndInclusive = start + replacement.interpolated.length - 1;
-        
-        // restore attributes (only non null values, to prevent not inheriting attributes from parent, and messing things up!)
-        if (newEndInclusive > start) {
-          for (const [attr, value] of Object.entries(attrs)) {
-            if (value != null) {
-              textElement.setAttributes(start, newEndInclusive, {
-                [attr]: value
-              });
-            }
-          }
-        }
+        const matchElement = getMatchFromRangeElement(r);
+        const items = interpolator.interpolate(matchElement.matched).items;
+        renderToMatchElement(items, matchElement);
 
         //Logger.log(JSON.stringify(["AFTER:", textElement.getAttributes(start)]));
       }
@@ -373,17 +351,6 @@ function* findAllText(body, text) {
   while(entry != null) {
     yield entry;
     entry = body.findText(text, entry);
-  }
-}
-
-function getChart(sheetName) {
-  sheetName = "Chart 1";
-  const sheet = G.ss.getSheetByName(sheetName);
-  const charts = sheet.getCharts();
-  if (charts.length > 0) {
-    return charts[0].getAs
-  } else {
-    return null;
   }
 }
 

@@ -54,3 +54,12 @@ function test_Utilities() {
   Logger.log(Utilities.formatString("%03.2f", num));
   Logger.log(Utilities.formatString("%03d", num));
 }
+
+function test_getChart() {
+  const sheetName = "data";
+  const sheet = G.ss.getSheetByName(sheetName);
+  const charts = sheet.getCharts();
+  Logger.log(`Charts on '${sheetName}': ${charts.length}`);
+  const blob = charts[0].getAs('image/png');
+}
+

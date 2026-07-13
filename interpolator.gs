@@ -1,55 +1,95 @@
+function textItem(value) {
+  return {
+    kind: "text",
+    value: String(value)
+  };
+}
+
+function imageItem(blob, options = {}) {
+  return {
+    kind: "image",
+    blob,
+    ...options
+  };
+}
+
+function pageBreakItem() {
+  return {
+    kind: "pagebreak",
+  };
+}
+
 function getFunctionsMap() {
   return new Map([
-    ["NOW", () => new Date().toLocaleString()],
-    ["ROW_INDEX", ({ rowIndex }) => (rowIndex ?? 0) + 1],
+    ["NOW", () => [textItem(new Date().toLocaleString())]],
+    ["ROW_INDEX", ({ rowIndex }) => [textItem((rowIndex ?? 0) + 1)]],
+    ["PAGEBREAK", () => [pageBreakItem()]],
   ]);
 }
 
 function getCommandsMap() {
   return new Map([
-    ["NUMBER", ({ args }) =>
-      Utilities.formatString(args.format, Number(args.value))
-    ],
+    ["NUMBER", ({ args }) => [
+      textItem(
+        Utilities.formatString(args.format, Number(args.value))
+      )
+    ]],
 
-    ["IMAGE", ({ args }) => ({
-      type: "image",
-      fileId: args.fileId,
-    })],
+    ["IMAGE", ({ args }) => [
+      {
+        kind: "image",
+        fileId: args.fileId,
+        width: args.width,
+        height: args.height,
+      }
+    ]],
 
-    ["CHART", ({ args }) => ({
-      type: "chart",
-      options: args,
-    })],
+    ["CHART", ({ args }) => [
+      {
+        kind: "chart",
+        src: args.src,
+        width: args.width,
+        height: args.height,
+      }
+    ]],
   ]);
 }
 
 class Interpolator {
+
   constructor({
     context = {},
     functions = new Map(),
     commands = new Map(),
   } = {}) {
+
     this.context = context;
     this.functions = functions;
     this.commands = commands;
-    this.columnsMap = context.columnsMap ? context.columnsMap : new Map();
+    this.columnsMap = context.columnsMap ?? new Map();
   }
 
   interpolate(template) {
-    const processedTokens = this.tokenize(template)
-      .map(token => this.resolve(token));
+
+    const items = [];
+
+    for (const token of this.tokenize(template)) {
+      items.push(...this.resolve(token));
+    }
 
     return {
-      interpolated: processedTokens.map(t => t.replacedWith).join(""),
-      processedTokens,
+      //items
+      items: this.mergeAdjacentText(items)
     };
   }
 
   tokenize(string) {
+
     const tokens = [];
     let pos = 0;
 
     for (const match of string.matchAll(TOKENIZER_REGEXP)) {
+
       if (match.index > pos) {
         tokens.push({
           raw: string.slice(pos, match.index),
@@ -79,41 +119,36 @@ class Interpolator {
   }
 
   resolve(token) {
-    if (!token.key) {
-      return {
-        ...token,
-        replacedWith: token.raw,
-        status: REPLACE_STATUS.KEPT_RAW,
-      };
-    }
+
+    if (!token.key)
+      return [textItem(token.raw)];
 
     const node = this.parse(token);
 
     switch (node.kind) {
+
       case "field":
-        return this.resolveField(token, node);
+        return this.resolveField(node);
 
       case "function":
-        return this.resolveFunction(token, node);
+        return this.resolveFunction(node);
 
       case "command":
-        return this.resolveCommand(token, node);
+        return this.resolveCommand(node);
 
       default:
-        return {
-          ...token,
-          replacedWith: token.raw,
-          status: REPLACE_STATUS.NOT_FOUND,
-        };
+        return [textItem(token.raw)];
     }
   }
 
   parse(token) {
+
     const key = token.key;
 
-    // {{{ ...json... }}}
     if (key.startsWith("{")) {
+
       try {
+
         const obj = JSON.parse(key);
 
         return {
@@ -121,12 +156,17 @@ class Interpolator {
           name: obj.type,
           args: obj,
         };
+
       } catch {
-        return { kind: "invalid" };
+
+        return {
+          kind: "invalid"
+        };
       }
     }
 
     if (this.functions.has(key)) {
+
       return {
         kind: "function",
         name: key,
@@ -139,55 +179,205 @@ class Interpolator {
     };
   }
 
-  resolveField(token, node) {
+  resolveField(node) {
+
     const idx = this.columnsMap.get(node.name);
 
     if (idx == null)
-      return {
-        ...token,
-        replacedWith: token.raw,
-        status: REPLACE_STATUS.NOT_FOUND,
-      };
+      return [textItem(`{{${node.name}}}`)];
 
-    const value = this.context.dataRow[idx];
-
-    const result = this.interpolate(String(value));
-
-    return {
-      ...token,
-      replacedWith: result.interpolated,
-      status: REPLACE_STATUS.OK,
-    };
+    return this.interpolate(
+      String(this.context.dataRow[idx])
+    ).items;
   }
 
-  resolveFunction(token, node) {
+  resolveFunction(node) {
+
     const fn = this.functions.get(node.name);
 
-    return {
-      ...token,
-      replacedWith: String(fn(this.context)),
-      status: REPLACE_STATUS.OK,
-    };
+    return fn(this.context);
   }
 
-  resolveCommand(token, node) {
+  resolveCommand(node) {
+
     const fn = this.commands.get(node.name);
 
     if (!fn)
-      return {
-        ...token,
-        replacedWith: token.raw,
-        status: REPLACE_STATUS.NOT_FOUND,
-      };
+      return [textItem(`{{${JSON.stringify(node.args)}}}`)];
 
-    return {
-      ...token,
-      replacedWith: fn({
-        ...this.context,
-        args: node.args,
-      }),
-      status: REPLACE_STATUS.OK,
-    };
+    return fn({
+      ...this.context,
+      args: node.args
+    });
   }
+
+  mergeAdjacentText(items) {
+
+    const merged = [];
+
+    for (const item of items) {
+
+      const last = merged[merged.length - 1];
+
+      if (
+        last &&
+        last.kind === "text" &&
+        item.kind === "text"
+      ) {
+        last.value += item.value;
+      } else {
+        merged.push(item);
+      }
+    }
+
+    return merged;
+  }
+
+}
+
+function renderToText(items) {
+  let result = [];
+
+  for (const item of items) {
+    switch (item.kind) {
+
+      case "text":
+        result.push(item.value);
+        break;
+
+      case "image":
+        break;
+
+      case "chart":
+        insertPageBreak(item);
+        break;
+
+      default:
+        
+    }
+  }
+
+  return result.join("");
+}
+
+function getMatchFromRangeElement(rangeElement) {
+  const textElement = rangeElement.getElement().asText();
+  const text = textElement.getText();
+  const start = rangeElement.getStartOffset();
+  const endInclusive = rangeElement.getEndOffsetInclusive();
+  const matched = text.slice(start, endInclusive + 1);
+
+  return {
+    rangeElement,
+    textElement,
+    text,
+    start,
+    endInclusive,
+    matched
+  }
+}
+
+function getMatchAttributes(matchElement) {
+  // save formatting attributes (into a clone)
+  const attrs = Object.assign({}, matchElement.textElement.getAttributes(matchElement.start));
+  //Logger.log(JSON.stringify([matched, start, endInclusive]));
+  //Logger.log(JSON.stringify(["BEFORE:", textElement.getAttributes(start)]));
+  return attrs;
+}
+
+function setMatchAttributes(matchElement, attrs, start, endInclusive) {  
+  // restore attributes (only non null values, to prevent not inheriting attributes from parent, and messing things up!)
+  if (endInclusive > start) {
+    for (const [attr, value] of Object.entries(attrs)) {
+      if (value != null) {
+        matchElement.textElement.setAttributes(start, endInclusive, {
+          [attr]: value
+        });
+      }
+    }
+  }
+}
+
+function replaceMatchText(matchElement, text) {
+  // delete text and insert replacement
+  matchElement.textElement.deleteText(matchElement.start, matchElement.endInclusive);
+  matchElement.textElement.insertText(matchElement.start, text);
+}
+
+function renderTextItem(item, matchElement) {
+  const attrs = getMatchAttributes(matchElement);
+  replaceMatchText(matchElement, item.value);
+  setMatchAttributes(matchElement, attrs, matchElement.start, matchElement.start + item.value.length - 1);
+}
+
+function renderImageItem(item, matchElement) {
+  replaceMatchText(matchElement, "");
+  const p = matchElement.rangeElement.getElement().getParent().asParagraph();
+  const file = DriveApp.getFileById(item.fileId);
+  const blob = file.getAs('image/png');
+
+  const inlineImage = p.insertInlineImage(0, blob);
+
+  if (item.width || item.height) {
+    const w = inlineImage.getWidth();
+    const h = inlineImage.getHeight();
+    const ratio = w / h;
+    if (item.width) {
+      inlineImage.setWidth(item.width);
+      if (!item.height) inlineImage.setHeight(item.width / ratio);
+    }    
+    if (item.height) {
+      inlineImage.setHeight(item.height);
+      if (!item.width) inlineImage.setWidth(item.height * ratio);
+    }
+  }
+}
+
+function renderChartItem(item, matchElement) {
+  replaceMatchText(matchElement, "");
+  const p = matchElement.rangeElement.getElement().getParent().asParagraph();
+  const sheet = G.ss.getSheetByName(item.src);
+  const charts = sheet.getCharts();
+  const chart = charts[0];
+  const blob = chart.getAs('image/png');
+  p.insertInlineImage(0, blob);
+}
+
+function renderPageBreak(item, matchElement) {
+  replaceMatchText(matchElement, "");
+  const p = matchElement.rangeElement.getElement().getParent().asParagraph();
+  p.insertPageBreak(0);
+}
+
+function renderToMatchElement(items, matchElement) {
+
+  for (const item of items) {
+    switch (item.kind) {
+
+      case "text": {
+        renderTextItem(item, matchElement);
+        break;
+      }
+
+      case "image": {
+        renderImageItem(item, matchElement);
+        break;
+      }
+
+      case "chart": {
+        renderChartItem(item, matchElement);
+        break;
+      }
+
+      case "pagebreak": {
+        renderPageBreak(item, matchElement);
+        break;
+      }
+
+      default:
+        
+    }
+  }
+
 }
 
