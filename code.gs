@@ -294,7 +294,7 @@ function merge() {
           commands,
         });
 
-        const matchElement = getMatchFromRangeElement(r);
+        const matchElement = getMatchFromRangeElement(r, context);
         const items = interpolator.interpolate(matchElement.matched).items;
         renderToMatchElement(items, matchElement);
 

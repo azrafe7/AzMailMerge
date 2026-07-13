@@ -63,3 +63,26 @@ function test_getChart() {
   const blob = charts[0].getAs('image/png');
 }
 
+function test_getTableData() {
+  const sheetName = "data";
+  const namedRange = "EMP_DATA";
+  const sheet = G.ss.getSheetByName(sheetName);
+  let range = G.ss.getRangeByName(namedRange);
+  if (range) {
+    Logger.log(JSON.stringify(range.getValues()));
+  }
+  const rangeStr = "data!A1:B7";
+  range = G.ss.getRange(rangeStr);
+  if (range) {
+    Logger.log(JSON.stringify(range.getValues()));
+  }
+}
+
+function test_getRichTextValues() {
+  const sheetName = "data";
+  const rangeStr = "data!D2:D3";
+  range = G.ss.getRange(rangeStr);
+  if (range) {
+    Logger.log(JSON.stringify(getRangeRuns(range)));
+  }
+}

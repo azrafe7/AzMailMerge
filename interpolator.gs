@@ -52,6 +52,14 @@ function getCommandsMap() {
         height: args.height,
       }
     ]],
+
+    ["TABLE", ({ args }) => [
+      {
+        kind: "table",
+        src: args.src,
+        format: args.format,
+      }
+    ]],
   ]);
 }
 
@@ -260,7 +268,7 @@ function renderToText(items) {
   return result.join("");
 }
 
-function getMatchFromRangeElement(rangeElement) {
+function getMatchFromRangeElement(rangeElement, context) {
   const textElement = rangeElement.getElement().asText();
   const text = textElement.getText();
   const start = rangeElement.getStartOffset();
@@ -268,6 +276,7 @@ function getMatchFromRangeElement(rangeElement) {
   const matched = text.slice(start, endInclusive + 1);
 
   return {
+    context,
     rangeElement,
     textElement,
     text,
@@ -277,25 +286,80 @@ function getMatchFromRangeElement(rangeElement) {
   }
 }
 
+
+function getRangeRuns(range) {
+  const richTextValues = range.getRichTextValues();
+  const backgrounds = range.getBackgrounds();
+
+  let docCells = [];
+  for (let row = 0; row < richTextValues.length; row++) {
+    let docRow = [];
+    for (let col = 0; col < richTextValues[0].length; col++) {
+      let docCell = [];
+      const richTextValue = richTextValues[row][col];
+      const background = backgrounds[row][col];
+      for (let run of richTextValue.getRuns()) {
+        let docRun = { text: run.getText() };
+        let attrs = {};
+
+        let start = run.getStartIndex();
+        let endInclusive = run.getEndIndex() - 1;
+        if (start >= endInclusive) continue;
+        let textStyle = run.getTextStyle(start, endInclusive);
+        let fontFamily = textStyle.getFontFamily();
+        let fontSize = textStyle.getFontSize();
+        let fontColor = textStyle.getForegroundColorObject().asRgbColor().asHexString();
+        let bold = textStyle.isBold();
+        let italic = textStyle.isItalic();
+        let strikeThrough = textStyle.isStrikethrough();
+        let underLine = textStyle.isUnderline();
+
+        attrs["STRIKETHROUGH"] = strikeThrough;
+        attrs["ITALIC"] = italic;
+        attrs["FOREGROUND_COLOR"] = fontColor;
+        attrs["BACKGROUND_COLOR"] = background;
+        attrs["LINK_URL"] = null;
+        attrs["UNDERLINE"] = underLine,
+        attrs["FONT_SIZE"] = fontSize;
+        attrs["FONT_FAMILY"] = fontFamily;
+        attrs["BOLD"] = bold;
+
+        docRun.start = start;
+        docRun.endInclusive = endInclusive;
+        docRun["attrs"] = attrs;
+        docCell.push(docRun);
+      }
+      docRow.push(docCell);
+    }
+    docCells.push(docRow);
+  }
+
+  return docCells;
+}
+
 function getMatchAttributes(matchElement) {
-  // save formatting attributes (into a clone)
+  // get formatting attributes (into a clone)
   const attrs = Object.assign({}, matchElement.textElement.getAttributes(matchElement.start));
   //Logger.log(JSON.stringify([matched, start, endInclusive]));
-  //Logger.log(JSON.stringify(["BEFORE:", textElement.getAttributes(start)]));
+  //Logger.log(JSON.stringify(["BEFORE:", matchElement.textElement.getAttributes(matchElement.start)]));
   return attrs;
 }
 
-function setMatchAttributes(matchElement, attrs, start, endInclusive) {  
-  // restore attributes (only non null values, to prevent not inheriting attributes from parent, and messing things up!)
+function setTextAttributes(textElement, start, endInclusive, attrs, onlyNonNull=true) {  
+  // set attributes (optionally only non null values, to prevent not inheriting attributes from parent, and messing things up!)
   if (endInclusive > start) {
     for (const [attr, value] of Object.entries(attrs)) {
-      if (value != null) {
-        matchElement.textElement.setAttributes(start, endInclusive, {
+      if (value != null && onlyNonNull) {
+        textElement.setAttributes(start, endInclusive, {
           [attr]: value
         });
       }
     }
   }
+}
+
+function setMatchAttributes(matchElement, start, endInclusive, attrs) {  
+  setTextAttributes(matchElement.textElement, start, endInclusive, attrs);
 }
 
 function replaceMatchText(matchElement, text) {
@@ -309,7 +373,7 @@ function replaceMatchText(matchElement, text) {
 function renderTextItem(item, matchElement) {
   const attrs = getMatchAttributes(matchElement);
   replaceMatchText(matchElement, item.value);
-  setMatchAttributes(matchElement, attrs, matchElement.start, matchElement.start + item.value.length - 1);
+  setMatchAttributes(matchElement, matchElement.start, matchElement.start + item.value.length - 1, attrs);
   // update the position
   matchElement.start = matchElement.start + item.value.length;
   matchElement.endInclusive = matchElement.start;
@@ -348,6 +412,40 @@ function renderChartItem(item, matchElement) {
   p.insertInlineImage(0, blob);
 }
 
+function renderTableItem(item, matchElement) {
+  replaceMatchText(matchElement, "");
+  const p = matchElement.rangeElement.getElement().getParent().asParagraph();
+  const namedRange = G.ss.getRangeByName(item.src);
+  const dataRange = namedRange ? namedRange : G.ss.getRange(item.src);
+  if (dataRange == null) return;
+
+  const values = dataRange.getValues();
+  const body = matchElement.context.body;
+  const childIndex = body.getChildIndex(p);
+
+  if (!item.format) {
+    body.insertTable(childIndex, values);
+  } else {
+    const table = body.insertTable(childIndex);
+    const rangeRuns = getRangeRuns(dataRange);
+    
+    rangeRuns.forEach(row => {
+      let tableRow = table.appendTableRow();
+      row.forEach(cell => {
+        let tableCell = tableRow.appendTableCell();
+        let text = tableCell.editAsText();
+        cell.forEach(run => {
+          text.appendText(run.text);
+          const bg = run.attrs["BACKGROUND_COLOR"];
+          run.attrs["BACKGROUND_COLOR"] = null;
+          tableCell.setBackgroundColor(bg);
+          setTextAttributes(text, run.start, run.endInclusive, run.attrs);
+        });
+      })
+    });
+  }
+}
+
 function renderPageBreak(item, matchElement) {
   replaceMatchText(matchElement, "");
   const p = matchElement.rangeElement.getElement().getParent().asParagraph();
@@ -357,6 +455,7 @@ function renderPageBreak(item, matchElement) {
 function renderToMatchElement(items, matchElement) {
 
   for (const item of items) {
+    Logger.log(JSON.stringify([matchElement.matched, item]));
     switch (item.kind) {
 
       case "text": {
@@ -371,6 +470,11 @@ function renderToMatchElement(items, matchElement) {
 
       case "chart": {
         renderChartItem(item, matchElement);
+        break;
+      }
+
+      case "table": {
+        renderTableItem(item, matchElement);
         break;
       }
 
