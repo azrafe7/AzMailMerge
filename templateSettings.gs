@@ -13,6 +13,7 @@ const TSETTING_KEEP_DOC = "KEEP DOC";
 const TSETTING_CREATE_PDF = "CREATE PDF";
 const TSETTING_PDF_FOLDER_ID = "DOC FOLDER ID";
 const TSETTING_PDF_NAME_FORMAT = "PDF NAME FORMAT";
+const TSETTING_MERGE_ALL = "MERGE ALL";
 
 const DEFAULT_TSETTINGS_PAIRS = [
   [TSETTING_DOC_TEMPLATE_ID, ''],
@@ -22,6 +23,7 @@ const DEFAULT_TSETTINGS_PAIRS = [
   [TSETTING_CREATE_PDF, 'no'],
   [TSETTING_PDF_FOLDER_ID, ''],
   [TSETTING_PDF_NAME_FORMAT, ''],
+  [TSETTING_MERGE_ALL, 'no'],
 ];
 
 const DEFAULT_TSETTINGS = {};
@@ -42,6 +44,7 @@ function getTemplateSettingsMessage() {
 
 function showTemplateSettings() {
   const message = getTemplateSettingsMessage();
+  fillTemplateSettingsTestCol();
 
   G.ui.alert(TOASTER.INFO, message, G.ui.ButtonSet.OK);
 }
