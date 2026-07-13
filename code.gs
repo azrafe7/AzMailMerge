@@ -228,6 +228,51 @@ function fillTemplateSettingsTestCol() {
   return filledTemplateSettings;
 }
 
+function appendDocTo(sourceDoc, targetDoc) {
+  const sourceBody = sourceDoc.getBody();
+  const targetBody = targetDoc.getBody();
+
+  var numElements = sourceBody.getNumChildren();
+  for (var i = 0; i < numElements; i++) {
+    var child = sourceBody.getChild(i);
+    var copy = child.copy();
+    var type = child.getType();
+
+    Logger.log(`Trying to append type ${type}`);
+    switch (type) {
+      case DocumentApp.ElementType.PARAGRAPH:
+        targetBody.appendParagraph(copy.asParagraph());
+        break;
+      
+      case DocumentApp.ElementType.TABLE:
+        targetBody.appendTable(copy.asTable());
+        break;
+      
+      case DocumentApp.ElementType.LIST_ITEM:
+        const listItem = child.asListItem();
+        const glyphType = listItem.getGlyphType();
+        const listItemCopy = listItem.copy().asListItem();
+        targetBody.appendListItem(listItemCopy);
+        listItemCopy.setGlyphType(DocumentApp.GlyphType.HOLLOW_BULLET);
+        Logger.log(JSON.stringify([glyphType, listItemCopy.getGlyphType()]));
+        break;
+
+      case DocumentApp.ElementType.INLINE_IMAGE:
+        targetBody.appendImage(copy.asInlineImage());
+        break;
+      
+      case DocumentApp.ElementType.HORIZONTAL_RULE:
+        targetBody.appendTable(copy.asHorizontalRule());
+        break;
+      
+
+      default:
+        Logger.log(`Unsupported type ${type}`);
+        break;
+    }
+  }
+}
+
 function merge() {
   const { rowMap, templateSettings } = loadTemplateSettings(true);
   const filledTemplateSettings = fillTemplateSettingsTestCol();
@@ -261,6 +306,17 @@ function merge() {
   
     const functions = getFunctionsMap();
     const commands = getCommandsMap();
+
+    let mergeAllFile = null;
+    let mergeAllFileName = null;
+    let mergeAllDoc = null;
+    let mergeAll = toBool(filledTemplateSettings[TSETTING_MERGE_ALL]);
+    if (mergeAll) {
+      mergeAllFileName = fileName + " _MERGE_ALL";
+      mergeAllDoc = DocumentApp.create(mergeAllFileName);
+      mergeAllFile = DriveApp.getFileById(mergeAllDoc.getId());
+      mergeAllFile.moveTo(templateFolder);
+    }
 
     let docs = [];
 
@@ -304,6 +360,13 @@ function merge() {
         //Logger.log(JSON.stringify(["AFTER:", textElement.getAttributes(start)]));
       }
 
+      docs.push(doc);
+      
+      if (mergeAll) {
+        appendDocTo(doc, mergeAllDoc);
+        mergeAllDoc.getBody().appendPageBreak();
+      }
+      
       doc.saveAndClose();
       Logger.log(`Filled doc saved as '${copyName}' (in '${filledTemplateSettings[TSETTING_DOC_FOLDER_ID]}' folder)`);
 
@@ -323,6 +386,19 @@ function merge() {
       if (!toBool(filledTemplateSettings[TSETTING_KEEP_DOC])) {
         Logger.log(`Deleting doc copy '${copyName}'`);
         copy.setTrashed(true);
+      }
+    }
+
+    if (mergeAll) {
+      mergeAllDoc.saveAndClose();
+      Logger.log(`Merged all into '${mergeAllFileName}'`);
+      if (toBool(filledTemplateSettings[TSETTING_CREATE_PDF])) {
+        try {
+          pdfFile = convertDocToPdf(mergeAllFileName, mergeAllDoc, templateFolder);
+        } catch (error) {
+          G.ui.alert(TOASTER.ERROR, error, G.ui.ButtonSet.OK);
+          throw error;
+        }
       }
     }
 
