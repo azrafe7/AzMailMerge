@@ -19,12 +19,19 @@ function pageBreakItem() {
   };
 }
 
+function splitParagraphItem() {
+  return {
+    kind: "split_paragraph",
+  };
+}
+
 function getFunctionsMap() {
   return new Map([
     ["NOW", () => [textItem(new Date().toLocaleString())]],
     ["ROW_INDEX", ({ rowIndex }) => [textItem((rowIndex ?? 0) + 1)]],
     ["PADDED_ROW_INDEX", ({ rowIndex }) => [textItem(String((rowIndex ?? 0) + 1).padStart(2, "0"))]],
     ["PAGEBREAK", () => [pageBreakItem()]],
+    ["SPLIT_PARAGRAPH", () => [splitParagraphItem()]],
     ["TEMPLATE_NAME", ({ templateName }) => [textItem(templateName)]],
   ]);
 }
@@ -259,15 +266,32 @@ function renderToText(items) {
   for (const item of items) {
     switch (item.kind) {
 
-      case "text":
+      case "text": {
         result.push(item.value);
         break;
+      }
 
-      case "image":
+      case "image": {
         break;
+      }
 
-      case "chart":
+      case "chart": {
         break;
+      }
+
+      case "table": {
+        break;
+      }
+
+      case "pagebreak": {
+        result.push("\n");
+        break;
+      }
+
+      case "link": {
+        result.push(`[${item.value}](${item.url})`);
+        break;
+      }
 
       default:
         
@@ -401,6 +425,31 @@ function replaceMatchText(matchElement, text) {
   matchElement.textElement.insertText(matchElement.start, text);
 }
 
+function splitParagraph(paragraph, start, endInclusive) {
+  const before = paragraph.copy().asParagraph();
+  const after = paragraph.copy().asParagraph();
+  before.editAsText().deleteText(start, paragraph.getText().length - 1);
+  after.editAsText().deleteText(0, endInclusive);
+  Logger.log(before.getText());
+  Logger.log(after.getText());
+  const parent = paragraph.getParent();
+  const childIndex = parent.getChildIndex(paragraph);
+  parent.insertParagraph(childIndex, before);
+  parent.insertParagraph(childIndex + 1, after);
+  paragraph.removeFromParent();
+
+  return {before, after, betweenIndex:childIndex + 1, parent};
+}
+
+function renderSplitParagraphItem(item, matchElement) {
+  const p = matchElement.rangeElement.getElement().getParent().asParagraph();
+  const splittedParagraph = splitParagraph(p, matchElement.start, matchElement.endInclusive);
+  const file = DriveApp.getFileById("1sLOfcOHInL1CgNu9d4F3ph8u_h6YqENX");
+  const blob = file.getAs('image/png');
+
+  splittedParagraph.before.appendInlineImage(blob);
+}
+
 function renderTextItem(item, matchElement, callback) {
   const attrs = getMatchAttributes(matchElement);
   replaceMatchText(matchElement, item.value);
@@ -416,6 +465,10 @@ function renderImageItem(item, matchElement) {
   const p = matchElement.rangeElement.getElement().getParent().asParagraph();
   const file = DriveApp.getFileById(item.fileId);
   const blob = file.getAs('image/png');
+
+  for (let childInfo of iterateChildrenOf(p)) {
+    Logger.log(JSON.stringify(childInfo));
+  }
 
   const inlineImage = p.insertInlineImage(0, blob);
 
@@ -526,6 +579,11 @@ function renderToMatchElement(items, matchElement) {
 
       case "link": {
         renderLinkItem(item, matchElement);
+        break;
+      }
+
+      case "split_paragraph": {
+        renderSplitParagraphItem(item, matchElement);
         break;
       }
 
