@@ -228,47 +228,75 @@ function fillTemplateSettingsTestCol() {
   return filledTemplateSettings;
 }
 
-function appendDocTo(sourceDoc, targetDoc) {
-  const sourceBody = sourceDoc.getBody();
-  const targetBody = targetDoc.getBody();
-
-  var numElements = sourceBody.getNumChildren();
+function appendSectionTo(sourceSection, targetSection) {
+  var numElements = sourceSection.getNumChildren();
   for (var i = 0; i < numElements; i++) {
-    var child = sourceBody.getChild(i);
+    var child = sourceSection.getChild(i);
     var copy = child.copy();
     var type = child.getType();
 
     Logger.log(`Trying to append type ${type}`);
     switch (type) {
       case DocumentApp.ElementType.PARAGRAPH:
-        targetBody.appendParagraph(copy.asParagraph());
+        targetSection.appendParagraph(copy.asParagraph());
         break;
       
       case DocumentApp.ElementType.TABLE:
-        targetBody.appendTable(copy.asTable());
+        targetSection.appendTable(copy.asTable());
         break;
       
       case DocumentApp.ElementType.LIST_ITEM:
-        const listItem = child.asListItem();
-        const glyphType = listItem.getGlyphType();
-        const listItemCopy = listItem.copy().asListItem();
-        targetBody.appendListItem(listItemCopy);
-        listItemCopy.setGlyphType(DocumentApp.GlyphType.HOLLOW_BULLET);
-        Logger.log(JSON.stringify([glyphType, listItemCopy.getGlyphType()]));
+        const listItemCopy = copy.asListItem();
+        targetSection.appendListItem(listItemCopy);
+        listItemCopy.setGlyphType(child.asListItem().getGlyphType());
         break;
 
+      /*
       case DocumentApp.ElementType.INLINE_IMAGE:
-        targetBody.appendImage(copy.asInlineImage());
+        targetSection.appendImage(copy.asInlineImage());
         break;
       
       case DocumentApp.ElementType.HORIZONTAL_RULE:
-        targetBody.appendTable(copy.asHorizontalRule());
+        targetSection.appendTable(copy.asHorizontalRule());
         break;
+      */
       
-
       default:
-        Logger.log(`Unsupported type ${type}`);
+        throw new Error(`Unsupported type ${type}`);
         break;
+    }
+  }
+}
+
+function appendDocTo(sourceDoc, targetDoc, { header = false, footer = false }) {
+  
+  const sourceBody = sourceDoc.getBody();
+  const targetBody = targetDoc.getBody();
+
+  appendSectionTo(sourceBody, targetBody);
+
+  // get header/footer from first tab
+  if (header || footer) {
+    const sourceTabs = sourceDoc.getTabs();
+    const sourceFirstTab = sourceTabs[0].asDocumentTab();
+    const targetTabs = targetDoc.getTabs();
+    const targetFirstTab = targetTabs[0].asDocumentTab();
+
+    if (header) {
+      const sourceHeader = sourceFirstTab.getHeader();
+      if (sourceHeader) {
+        Logger.log(`Trying to append type ${sourceHeader.getType()}`);
+        let targetHeader = targetFirstTab.getHeader() ?? targetFirstTab.addHeader();
+        appendSectionTo(sourceHeader, targetHeader);
+      }
+    }
+    if (footer) {
+      const sourceFooter = sourceFirstTab.getFooter();
+      if (sourceFooter) {
+        Logger.log(`Trying to append type ${sourceFooter.getType()}`);
+        let targetFooter = targetFirstTab.getFooter() ?? targetFirstTab.addFooter();
+        appendSectionTo(sourceFooter, targetFooter);
+      }
     }
   }
 }
@@ -320,6 +348,7 @@ function merge() {
 
     let docs = [];
 
+    let isFirstDoc = true;
     for (let rowIndex=0; rowIndex < 2; rowIndex++) {
       const copyName = String(templateSettings[TSETTING_DOC_NAME_FORMAT]) === '' ? fileName + '_' + String(rowIndex).padStart(2, "0") : filledTemplateSettings[TSETTING_DOC_NAME_FORMAT];
       const copy = file.makeCopy(copyName, templateFolder);
@@ -363,7 +392,7 @@ function merge() {
       docs.push(doc);
       
       if (mergeAll) {
-        appendDocTo(doc, mergeAllDoc);
+        appendDocTo(doc, mergeAllDoc, { header:isFirstDoc, footer:isFirstDoc });
         mergeAllDoc.getBody().appendPageBreak();
       }
       
@@ -387,6 +416,8 @@ function merge() {
         Logger.log(`Deleting doc copy '${copyName}'`);
         copy.setTrashed(true);
       }
+
+      isFirstDoc = false;
     }
 
     if (mergeAll) {

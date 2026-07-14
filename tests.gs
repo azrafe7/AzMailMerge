@@ -86,3 +86,15 @@ function test_getRichTextValues() {
     Logger.log(JSON.stringify(getRangeRuns(range)));
   }
 }
+
+function test_docStructure() {
+  const {rowMap, templateSettings} = loadTemplateSettings(true);
+  const doc = DocumentApp.openById(templateSettings[TSETTING_DOC_TEMPLATE_ID]);
+  const tabs = doc.getTabs();
+  Logger.log(tabs);
+  Logger.log(JSON.stringify(tabs.map((t) => t.getId())));
+  const footer = tabs[0].asDocumentTab().getFooter();
+  Logger.log(footer.getText());
+  Logger.log(footer.getType());
+}
+
