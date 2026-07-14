@@ -62,6 +62,14 @@ function getCommandsMap() {
         format: args.format,
       }
     ]],
+
+    ["LINK", ({ args }) => [
+      {
+        kind: "link",
+        value: args.value,
+        url: args.url,
+      }
+    ]],
   ]);
 }
 
@@ -259,7 +267,6 @@ function renderToText(items) {
         break;
 
       case "chart":
-        insertPageBreak(item);
         break;
 
       default:
@@ -471,10 +478,16 @@ function renderTableItem(item, matchElement) {
   }
 }
 
-function renderPageBreak(item, matchElement) {
+function renderPageBreakItem(item, matchElement) {
   replaceMatchText(matchElement, "");
   const p = matchElement.rangeElement.getElement().getParent().asParagraph();
   p.insertPageBreak(0);
+}
+
+function renderLinkItem(item, matchElement) {
+  replaceMatchText(matchElement, item.value);
+  const endInclusive = matchElement.start + item.value.length - 1;
+  matchElement.textElement.setLinkUrl(matchElement.start, endInclusive, item.url);
 }
 
 function renderToMatchElement(items, matchElement) {
@@ -504,7 +517,12 @@ function renderToMatchElement(items, matchElement) {
       }
 
       case "pagebreak": {
-        renderPageBreak(item, matchElement);
+        renderPageBreakItem(item, matchElement);
+        break;
+      }
+
+      case "link": {
+        renderLinkItem(item, matchElement);
         break;
       }
 
