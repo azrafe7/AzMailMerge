@@ -98,3 +98,51 @@ function test_docStructure() {
   Logger.log(footer.getType());
 }
 
+function getDocStructure() {
+  //const DOC_ID = "1CA7WCoXleWHWqT2dEyjt3DDxTwZKlcWli_kz9Y767-Q"; // with inline image inside paragraph
+  //const DOC_ID = "1Xtyi4fxIh3EDZ-e97Bd-Mop5lLgQbiG4JfFGSu5Pel4"; // without
+  const DOC_ID = "1VaS4kPTCm6kAon5pI7RY-1H6Rd19g6Fj0hm0m1BepLg"; // test
+  
+  const doc = DocumentApp.openById(DOC_ID);
+  const body = doc.getBody();
+  let tree = {};
+  let parentsMap = {};
+
+  let id = 0;
+  let stack = [{elementId:id, element:body}];
+  let step = 0;
+  const MAX_STEPS = 300;
+  let maxStepsReached = false;
+  while (stack.length > 0 && !maxStepsReached) {
+    const { elementId, element } = stack.pop();
+    const numChildren = element.getNumChildren ? element.getNumChildren() : 0;
+    const type = element.getType ? element.getType() : null;
+    const text = type === DocumentApp.ElementType.TEXT ? element.getText() : "";
+
+    let node = { elementId, type, children: [], text };
+    Logger.log(JSON.stringify(node));
+
+    if (step == 0) {
+      tree = node;
+    } else {
+      const parent = parentsMap[node.elementId];
+      parent.children.push(node);
+    }
+
+    for (let childIndex = numChildren - 1; childIndex >=0; childIndex--) {
+      id++;
+      const child = element.getChild(childIndex);
+      stack.push({ elementId:id, element:child });
+      parentsMap[id] = node;
+    }
+
+    step++;
+    maxStepsReached = step >= MAX_STEPS;
+  }
+
+  Logger.log(JSON.stringify(tree));
+  const sheet = G.ss.getSheetByName("log");
+  sheet.appendRow([maxStepsReached, JSON.stringify(tree)]);
+  if (maxStepsReached) Logger.log("MAX_STEPS REACHED!");
+}
+
