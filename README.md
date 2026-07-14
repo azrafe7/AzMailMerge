@@ -1,8 +1,8 @@
 # AzMM - Doc/Pdf Generator: from Excel/Sheets Data to Filled Template
 
-*Input*: sheets data + doc template with placeholders
+**Input**: sheets data + doc template with placeholders
 
-*Output*: filled doc/pdf
+**Output**: filled doc/pdf
 
 
 Supports:
@@ -11,8 +11,8 @@ Supports:
  - images
  - charts
  - tables
- - advanced placeholders (e.g. {{{"type":"IMAGE", "fileId":"1sLOfcOHInL1CgNu9d4F3ph8u_h6YqENX", "width":200}}})
+ - advanced placeholders (e.g. `{{{"type":"IMAGE", "fileId":"1sLOfcOHInL1CgNu9d4F3ph8u_h6YqENX", "width":200}}}`)
  - ...
- - merge all into a single Doc/Pdf
+ - individual outputs, or merge all into a single doc/pdf
  
  
