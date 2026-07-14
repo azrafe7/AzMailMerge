@@ -401,9 +401,10 @@ function replaceMatchText(matchElement, text) {
   matchElement.textElement.insertText(matchElement.start, text);
 }
 
-function renderTextItem(item, matchElement) {
+function renderTextItem(item, matchElement, callback) {
   const attrs = getMatchAttributes(matchElement);
   replaceMatchText(matchElement, item.value);
+  if (callback) callback(item, matchElement);
   setMatchAttributes(matchElement, matchElement.start, matchElement.start + item.value.length - 1, attrs);
   // update the position
   matchElement.start = matchElement.start + item.value.length;
@@ -485,9 +486,11 @@ function renderPageBreakItem(item, matchElement) {
 }
 
 function renderLinkItem(item, matchElement) {
-  replaceMatchText(matchElement, item.value);
-  const endInclusive = matchElement.start + item.value.length - 1;
-  matchElement.textElement.setLinkUrl(matchElement.start, endInclusive, item.url);
+  const start = matchElement.start;
+  renderTextItem(item, matchElement, (item, matchElement) => {
+    const endInclusive = start + item.value.length - 1;
+    matchElement.textElement.setLinkUrl(start, endInclusive, item.url);
+  });
 }
 
 function renderToMatchElement(items, matchElement) {
