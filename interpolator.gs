@@ -288,8 +288,13 @@ function getMatchFromRangeElement(rangeElement, context) {
   }
 }
 
-
 function getRangeRuns(range) {
+  const numberFormats = range.getNumberFormats();
+  
+  // temporarily set all formats to String (otherwise cells formatted as numbers report empty richTextValues)
+  const stringFormats = numberFormats.map(row => row.map(cell => '@'));
+  range.setNumberFormats(stringFormats);
+
   const richTextValues = range.getRichTextValues();
   const backgrounds = range.getBackgrounds();
 
@@ -348,6 +353,9 @@ function getRangeRuns(range) {
     }
     docCells.push(docRow);
   }
+
+  // restore formats
+  range.setNumberFormats(numberFormats);
 
   Logger.log(JSON.stringify(docCells));
   return docCells;
@@ -435,7 +443,7 @@ function renderTableItem(item, matchElement) {
   const dataRange = namedRange ? namedRange : G.ss.getRange(item.src);
   if (dataRange == null) return;
 
-  const values = dataRange.getValues();
+  const values = dataRange.getDisplayValues();
   const body = matchElement.context.body;
   const childIndex = body.getChildIndex(p);
 
