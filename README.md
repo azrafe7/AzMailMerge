@@ -1,7 +1,9 @@
 # AzMM - Doc/Pdf Generator: from Excel/Sheets Data to Filled Template
 
 Input : sheets data + doc template with placeholders
+
 Output: filled Doc/Pdf
+
 
 Supports:
  - text
