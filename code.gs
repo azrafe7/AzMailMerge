@@ -190,7 +190,7 @@ function fillTemplateSettingsTestCol() {
   Logger.log(testValues);
 
   let { metaColumnsMap, metaData, mergeColumnsMap, mergeData, mergeDisplayData } = getMergeData();
-  const dataRow = mergeData.length > 0 ? mergeData[0] : null;
+  const dataRow = mergeDisplayData.length > 0 ? mergeDisplayData[0] : null;
   const functionsMap = getFunctionsMap();
 
   const context = {
@@ -357,7 +357,7 @@ function merge() {
       const doc = DocumentApp.openById(copy.getId());
       const body = doc.getBody();
 
-      const dataRow = mergeData[rowIndex];
+      const dataRow = mergeDisplayData[rowIndex];
 
       Logger.log(`Processing row ${rowIndex}`);
 

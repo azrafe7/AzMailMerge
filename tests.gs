@@ -80,7 +80,7 @@ function test_getTableData() {
 
 function test_getRichTextValues() {
   const sheetName = "data";
-  const rangeStr = "data!D2:D3";
+  const rangeStr = "data!C2:C3";
   range = G.ss.getRange(rangeStr);
   if (range) {
     Logger.log(JSON.stringify(getRangeRuns(range)));
