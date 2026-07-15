@@ -19,9 +19,9 @@ function pageBreakItem() {
   };
 }
 
-function splitParagraphItem() {
+function splitItem() {
   return {
-    kind: "split_paragraph",
+    kind: "split",
   };
 }
 
@@ -31,7 +31,7 @@ function getFunctionsMap() {
     ["ROW_INDEX", ({ rowIndex }) => [textItem((rowIndex ?? 0) + 1)]],
     ["PADDED_ROW_INDEX", ({ rowIndex }) => [textItem(String((rowIndex ?? 0) + 1).padStart(2, "0"))]],
     ["PAGEBREAK", () => [pageBreakItem()]],
-    ["SPLIT_PARAGRAPH", () => [splitParagraphItem()]],
+    ["SPLIT", () => [splitItem()]],
     ["TEMPLATE_NAME", ({ templateName }) => [textItem(templateName)]],
   ]);
 }
@@ -425,31 +425,35 @@ function replaceMatchText(matchElement, text) {
   matchElement.textElement.insertText(matchElement.start, text);
 }
 
-function splitParagraph(paragraph, start, endInclusive) {
-  const before = paragraph.copy().asParagraph();
-  const after = paragraph.copy().asParagraph();
-  before.editAsText().deleteText(start, paragraph.getText().length - 1);
+function splitElement(element, start, endInclusive) {
+  const before = element.copy();
+  const after = element.copy();
+  before.editAsText().deleteText(start, element.getText().length - 1);
   after.editAsText().deleteText(0, endInclusive);
-  Logger.log(before.getText());
-  Logger.log(after.getText());
-  const parent = paragraph.getParent();
-  const childIndex = parent.getChildIndex(paragraph);
-  parent.insertParagraph(childIndex, before);
-  parent.insertParagraph(childIndex + 1, after);
-  paragraph.removeFromParent();
+  const parent = element.getParent();
+  const childIndex = parent.getChildIndex(element);
+  const type = element.getType();
+  let insertFn = () => {};
+  switch (type) {
+    case DocumentApp.ElementType.PARAGRAPH:
+      insertFn = parent.insertParagraph;
+      break;
+    case DocumentApp.ElementType.LIST_ITEM:
+      insertFn = parent.insertListItem;
+      break;
+    default:
+      throw new Error(`[split] Unsupported type ${type}`);
+  }
+  insertFn(childIndex, before);
+  insertFn(childIndex + 1, after);
+  element.removeFromParent();
 
   return {before, after, betweenIndex:childIndex + 1, parent};
 }
 
-function renderSplitParagraphItem(item, matchElement) {
-  const p = matchElement.rangeElement.getElement().getParent().asParagraph();
-  const splittedParagraph = splitParagraph(p, matchElement.start, matchElement.endInclusive);
-  const file = DriveApp.getFileById("1sLOfcOHInL1CgNu9d4F3ph8u_h6YqENX");
-  const blob = file.getAs('image/png');
-
-  splittedParagraph.before.appendInlineImage(blob);
-  splittedParagraph.after.merge();
-  //splittedParagraph.parent.insertParagraph(splittedParagraph.betweenIndex, splittedParagraph.after.copy());
+function renderSplitItem(item, matchElement) {
+  const parent = matchElement.rangeElement.getElement().getParent();
+  const splitted = splitElement(parent, matchElement.start, matchElement.endInclusive);
 }
 
 function renderTextItem(item, matchElement, callback) {
@@ -463,16 +467,15 @@ function renderTextItem(item, matchElement, callback) {
 }
 
 function renderImageItem(item, matchElement) {
-  replaceMatchText(matchElement, "");
-  const p = matchElement.rangeElement.getElement().getParent().asParagraph();
+  //replaceMatchText(matchElement, "");
+  const parent = matchElement.rangeElement.getElement().getParent();
+
   const file = DriveApp.getFileById(item.fileId);
   const blob = file.getAs('image/png');
 
-  for (let childInfo of iterateChildrenOf(p)) {
-    Logger.log(JSON.stringify(childInfo));
-  }
-
-  const inlineImage = p.insertInlineImage(0, blob);
+  const splitted = splitElement(parent, matchElement.start, matchElement.endInclusive);
+  const inlineImage = splitted.before.appendInlineImage(blob);
+  splitted.after.merge();
 
   if (item.width || item.height) {
     const w = inlineImage.getWidth();
@@ -584,8 +587,8 @@ function renderToMatchElement(items, matchElement) {
         break;
       }
 
-      case "split_paragraph": {
-        renderSplitParagraphItem(item, matchElement);
+      case "split": {
+        renderSplitItem(item, matchElement);
         break;
       }
 
