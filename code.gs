@@ -142,26 +142,32 @@ function merge() {
     const commands = getCommandsMap();
     const docRenderer = new DocRenderer();
 
-    let mergeAllFile = null;
-    let mergeAllFileName = null;
-    let mergeAllDoc = null;
-    let mergeAllBody = null;
-    let mergeAllFirstEmptyParagraph = null;
+    let mergeDoc = {
+      file: null,
+      fileName: null,
+      doc: null,
+      body: null,
+      firstPara: null,
+      header: null,
+      footer: null,
+    };
     let mergeAll = toBool(filledTemplateSettings[TSETTING_MERGE_ALL]);
     if (mergeAll) {
-      mergeAllFileName = fileName + " _MERGE_ALL";
-      /*
-      mergeAllDoc = DocumentApp.create(mergeAllFileName);
-      mergeAllFile = DriveApp.getFileById(mergeAllDoc.getId());
-      mergeAllFile.moveTo(templateFolder);
-      */
-      const copy = file.makeCopy(mergeAllFileName, templateFolder);
-      mergeAllDoc = DocumentApp.openById(copy.getId());
-      mergeAllBody = mergeAllDoc.getBody();
-      mergeAllBody.clear();
+      mergeDoc.fileName = fileName + " _MERGE_ALL";
+      const copy = file.makeCopy(mergeDoc.fileName, templateFolder);
+      mergeDoc.doc = DocumentApp.openById(copy.getId());
+      mergeDoc.body = mergeDoc.doc.getBody();
+      mergeDoc.body.clear();
 
       // store first empty paragraph (will be removed later)
-      mergeAllFirstEmptyParagraph = mergeAllBody.getChild(0);
+      mergeDoc.firstPara = mergeDoc.body.getChild(0);
+
+      // clear and store header/footer (for later use)
+      const tab = mergeDoc.doc.getTabs()[0].asDocumentTab();
+      mergeDoc.header = tab.getHeader();
+      mergeDoc.header?.clear();
+      mergeDoc.footer = tab.getFooter();
+      mergeDoc.footer?.clear();
     }
 
     let docs = [];
@@ -210,9 +216,13 @@ function merge() {
       docs.push(doc);
       
       if (mergeAll) {
-        appendDocTo(doc, mergeAllDoc, { header:isFirstDoc, footer:isFirstDoc });
-        if (isFirstDoc) mergeAllFirstEmptyParagraph.removeFromParent();
-        mergeAllBody.appendPageBreak();
+        appendDocTo(doc, mergeDoc.doc, { header:isFirstDoc, footer:isFirstDoc });
+        if (isFirstDoc) {
+          mergeDoc.firstPara.removeFromParent();
+          if (mergeDoc.header) mergeDoc.header.getChild(0).removeFromParent();
+          if (mergeDoc.footer) mergeDoc.footer.getChild(0).removeFromParent();
+        }
+        mergeDoc.body.appendPageBreak();
       }
       
       doc.saveAndClose();
@@ -240,11 +250,11 @@ function merge() {
     }
 
     if (mergeAll) {
-      mergeAllDoc.saveAndClose();
-      Logger.log(`Merged all into '${mergeAllFileName}'`);
+      mergeDoc.doc.saveAndClose();
+      Logger.log(`Merged all into '${mergeDoc.fileName}'`);
       if (toBool(filledTemplateSettings[TSETTING_CREATE_PDF])) {
         try {
-          pdfFile = convertDocToPdf(mergeAllFileName, mergeAllDoc, templateFolder);
+          pdfFile = convertDocToPdf(mergeDoc.fileName, mergDoc.doc, templateFolder);
         } catch (error) {
           G.ui.alert(TOASTER.ERROR, error, G.ui.ButtonSet.OK);
           throw error;
