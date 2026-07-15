@@ -244,7 +244,7 @@ class DocRenderer {
       body.insertTable(childIndex, values);
     } else {
       const table = body.insertTable(childIndex);
-      const rangeRuns = this.getRangeRuns(dataRange);
+      const rangeRuns = getRangeRuns(dataRange);
       
       rangeRuns.forEach(row => {
         let tableRow = table.appendTableRow();
