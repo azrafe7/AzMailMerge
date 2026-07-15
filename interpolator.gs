@@ -466,12 +466,8 @@ function renderTextItem(item, matchElement, callback) {
   matchElement.endInclusive = matchElement.start;
 }
 
-function renderImageItem(item, matchElement) {
-  //replaceMatchText(matchElement, "");
+function renderImageBlob(item, matchElement, blob) {
   const parent = matchElement.rangeElement.getElement().getParent();
-
-  const file = DriveApp.getFileById(item.fileId);
-  const blob = file.getAs('image/png');
 
   const splitted = splitElement(parent, matchElement.start, matchElement.endInclusive);
   const inlineImage = splitted.before.appendInlineImage(blob);
@@ -490,16 +486,24 @@ function renderImageItem(item, matchElement) {
       if (!item.width) inlineImage.setWidth(item.height * ratio);
     }
   }
+
+  return inlineImage;
+}
+
+function renderImageItem(item, matchElement) {
+  const file = DriveApp.getFileById(item.fileId);
+  const blob = file.getAs('image/png');
+
+  const inlineImage = renderImageBlob(item, matchElement, blob);
 }
 
 function renderChartItem(item, matchElement) {
-  replaceMatchText(matchElement, "");
-  const p = matchElement.rangeElement.getElement().getParent().asParagraph();
   const sheet = G.ss.getSheetByName(item.src);
   const charts = sheet.getCharts();
   const chart = charts[0];
   const blob = chart.getAs('image/png');
-  p.insertInlineImage(0, blob);
+  
+  const inlineImage = renderImageBlob(item, matchElement, blob);
 }
 
 function renderTableItem(item, matchElement) {
@@ -539,7 +543,7 @@ function renderTableItem(item, matchElement) {
 
 function renderPageBreakItem(item, matchElement) {
   replaceMatchText(matchElement, "");
-  const p = matchElement.rangeElement.getElement().getParent().asParagraph();
+  const p = matchElement.rangeElement.getElement().getParent();
   p.insertPageBreak(0);
 }
 
