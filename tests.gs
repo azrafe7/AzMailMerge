@@ -149,11 +149,127 @@ function getSectionStructure(section) {
   return { tree, maxStepsReached };
 }
 
+/**
+ * Returns `element` as properly typed.
+ * `typedAs` can be:
+ *  - null: type will be what's returned by `element.getType()`
+ *  - one of DocumentApp.ElementType
+ *  - another element: type will be what's returned by `typedAs.getType()`
+ */
+function getAsTyped(element, typedAs=null) {
+  const type = typedAs == null ? element.getType() : (typeof typedAs.getType === "function" ? typedAs.getType() : typedAs);
+  let typed = null;
+
+  switch (type) {
+    case DocumentApp.ElementType.BODY_SECTION: {
+      typed = element.asBody();
+      break;
+    }
+    case DocumentApp.ElementType.COMMENT_SECTION: {
+      typed = element.asCommentSection();
+      break;
+    }
+    case DocumentApp.ElementType.DATE: {D
+      typed = element.asate();
+      break;
+    }
+    case DocumentApp.ElementType.EQUATION: {
+      typed = element.asEquation();
+      break;
+    }
+    case DocumentApp.ElementType.EQUATION_FUNCTION: {
+      typed = element.asEquationFunction();
+      break;
+    }
+    case DocumentApp.ElementType.EQUATION_FUNCTION_ARGUMENT_SEPARATOR: {
+      typed = element.asEquationFunctionArgumentSeparator();
+      break;
+    }
+    case DocumentApp.ElementType.EQUATION_SYMBOL: {
+      typed = element.asEquationSymbol();
+      break;
+    }
+    case DocumentApp.ElementType.RICH_LINK: {
+      typed = element.asRichLink();
+      break;
+    }
+    case DocumentApp.ElementType.FOOTER_SECTION: {
+      typed = element.asFooterSection();
+      break;
+    }
+    case DocumentApp.ElementType.FOOTNOTE: {
+      typed = element.asFootnote();
+      break;
+    }
+    case DocumentApp.ElementType.FOOTNOTE_SECTION: {
+      typed = element.asFootnoteSection();
+      break;
+    }
+    case DocumentApp.ElementType.HEADER_SECTION: {
+      typed = element.asHeaderSection();
+      break;
+    }
+    case DocumentApp.ElementType.HORIZONTAL_RULE: {
+      typed = element.asHorizontalRule();
+      break;
+    }
+    case DocumentApp.ElementType.INLINE_DRAWING: {
+      typed = element.asInlineDrawing();
+      break;
+    }
+    case DocumentApp.ElementType.INLINE_IMAGE: {
+      typed = element.asInlineImage();
+      break;
+    }
+    case DocumentApp.ElementType.LIST_ITEM: {
+      typed = element.asListItem();
+      break;
+    }
+    case DocumentApp.ElementType.PAGE_BREAK: {
+      typed = element.asPageBreak();
+      break;
+    }
+    case DocumentApp.ElementType.PARAGRAPH: {
+      typed = element.asParagraph();
+      break;
+    }
+    case DocumentApp.ElementType.PERSON: {
+      typed = element.asPerson();
+      break;
+    }
+    case DocumentApp.ElementType.TABLE: {
+      typed = element.asTable();
+      break;
+    }
+    case DocumentApp.ElementType.TABLE_CELL: {
+      typed = element.asTableCell();
+      break;
+    }
+    case DocumentApp.ElementType.TABLE_OF_CONTENTS: {
+      typed = element.asTableOfContents();
+      break;
+    }
+    case DocumentApp.ElementType.TABLE_ROW: {
+      typed = element.asTableRow();
+      break;
+    }
+    case DocumentApp.ElementType.TEXT: {
+      typed = element.asText();
+      break;
+    }
+    case DocumentApp.ElementType.UNSUPPORTED:
+    default:
+      throw new Error("UNSUPPORTED ELEMENT TYPE");
+  }
+
+  return typed;
+}
+
 function getDocStructure() {
   //const DOC_ID = "1CA7WCoXleWHWqT2dEyjt3DDxTwZKlcWli_kz9Y767-Q"; // with inline image inside paragraph
   //const DOC_ID = "1Xtyi4fxIh3EDZ-e97Bd-Mop5lLgQbiG4JfFGSu5Pel4"; // without
   //const DOC_ID = "1VaS4kPTCm6kAon5pI7RY-1H6Rd19g6Fj0hm0m1BepLg"; // test
-  const DOC_ID = "1LB5XuyY1ACr0poPmAmjBFz1SQEafI8by3aDZg2YwhqM";
+  const DOC_ID = "19VfFKqV5fihG5RkLcSTAK8QXV_uT2qFC5mLcN2T2Pdg";
   
   const doc = DocumentApp.openById(DOC_ID);
   const body = doc.getBody();
