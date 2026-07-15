@@ -68,7 +68,8 @@ function fillTemplateSettingsTestCol() {
 
   let { metaColumnsMap, metaData, mergeColumnsMap, mergeData, mergeDisplayData } = getMergeData();
   const dataRow = mergeDisplayData.length > 0 ? mergeDisplayData[0] : null;
-  const functionsMap = getFunctionsMap();
+
+  const textRenderer = new TextRenderer();
 
   const context = {
     dataRow,
@@ -94,7 +95,7 @@ function fillTemplateSettingsTestCol() {
       if (String(v) === '') {
         testValueRow[0] = filledTemplateSettings[TSETTING_DOC_TEMPLATE_ID];
       } else {
-        testValueRow[0] = renderToText(interpolator.interpolate(v).items);
+        testValueRow[0] = textRenderer.render(interpolator.interpolate(v).items);
       }
     } else testValueRow[0] = v;
     filledTemplateSettings[k] = testValueRow[0];
@@ -138,6 +139,7 @@ function merge() {
   
     const functions = getFunctionsMap();
     const commands = getCommandsMap();
+    const docRenderer = new DocRenderer();
 
     let mergeAllFile = null;
     let mergeAllFileName = null;
@@ -197,9 +199,9 @@ function merge() {
           commands,
         });
 
-        const matchElement = getMatchFromRangeElement(r, context);
+        const matchElement = docRenderer.getMatchFromRangeElement(r, context);
         const items = interpolator.interpolate(matchElement.matched).items;
-        renderToMatchElement(items, matchElement);
+        docRenderer.render(items, matchElement);
 
         //Logger.log(JSON.stringify(["AFTER:", textElement.getAttributes(start)]));
       }
