@@ -204,6 +204,10 @@ class DocRenderer {
       }
     }
 
+    if (item.linkUrl) {
+      inlineImage.setLinkUrl(item.linkUrl);
+    }
+
     return inlineImage;
   }
 

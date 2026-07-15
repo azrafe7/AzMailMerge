@@ -41,6 +41,7 @@ function getCommandsMap() {
         kind: "image",
         fileId: args.fileId,
         url: args.url,
+        linkUrl: args.linkUrl,
         width: args.width,
         height: args.height,
       }
@@ -50,6 +51,7 @@ function getCommandsMap() {
       {
         kind: "chart",
         src: args.src,
+        linkUrl: args.linkUrl,
         width: args.width,
         height: args.height,
       }
