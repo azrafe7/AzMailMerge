@@ -79,6 +79,12 @@ function* iterateChildrenOf(section) {
 
 function appendSectionTo(sourceSection, targetSection) {
   let numElements = sourceSection.getNumChildren();
+  
+  // since a table cannot be the last element, the Google API auto-appends a paragraph when that condition is met.
+  // we collect them here, so they can be removed at the end
+  const targetSectionType = targetSection.getType();
+  let paraToRemove = [];
+
   for (let i = 0; i < numElements; i++) {
     let child = sourceSection.getChild(i);
     let copy = child.copy();
@@ -86,18 +92,23 @@ function appendSectionTo(sourceSection, targetSection) {
 
     Logger.log(`Trying to append type ${type}`);
     switch (type) {
-      case DocumentApp.ElementType.PARAGRAPH:
+      case DocumentApp.ElementType.PARAGRAPH: {
         targetSection.appendParagraph(copy);
         break;
+      }
       
-      case DocumentApp.ElementType.TABLE:
+      case DocumentApp.ElementType.TABLE: {
         targetSection.appendTable(copy);
+        const nextSibling = copy.getNextSibling();
+        if (nextSibling) paraToRemove.push(nextSibling);
         break;
+      }
       
-      case DocumentApp.ElementType.LIST_ITEM:
+      case DocumentApp.ElementType.LIST_ITEM: {
         targetSection.appendListItem(copy);
         copy.setGlyphType(child.getGlyphType());
         break;
+      }
 
       /*
       case DocumentApp.ElementType.INLINE_IMAGE:
@@ -114,6 +125,9 @@ function appendSectionTo(sourceSection, targetSection) {
         break;
     }
   }
+
+  //Logger.log(`Removed ${paraToRemove.length} para after tables`);
+  if (paraToRemove.length > 0) paraToRemove.forEach((p) => p.removeFromParent())
 }
 
 function appendDocTo(sourceDoc, targetDoc, { header = false, footer = false }) {
