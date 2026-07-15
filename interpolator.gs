@@ -448,6 +448,8 @@ function renderSplitParagraphItem(item, matchElement) {
   const blob = file.getAs('image/png');
 
   splittedParagraph.before.appendInlineImage(blob);
+  splittedParagraph.after.merge();
+  //splittedParagraph.parent.insertParagraph(splittedParagraph.betweenIndex, splittedParagraph.after.copy());
 }
 
 function renderTextItem(item, matchElement, callback) {
