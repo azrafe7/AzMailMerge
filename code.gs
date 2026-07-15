@@ -1,4 +1,5 @@
 const MERGE_SETTINGS_SHEET = 'merge_settings';
+const LOG_SHEET = 'log';
 const TEMPLATE_SETTINGS_TEST_COL = 'TEST';
 
 const DOC_PLACEHOLDERS_PATTERN = "{{([^{}}]+|{[^}]+})}}";
