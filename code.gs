@@ -3,6 +3,9 @@ const TEMPLATE_SETTINGS_TEST_COL = 'TEST';
 
 const DOC_PLACEHOLDERS_PATTERN = "{{([^{}}]+|{[^}]+})}}";
 const TOKENIZER_REGEXP = new RegExp("{{([^{}}]+|{[^}]+})}}", "g"); // allow placeholders to be in object notation (wrapped in {})
+const DETOKENIZER_REGEXP = new RegExp("^{{|}}$", "g"); // remove wrapping {{ }}
+
+const MERGE_DATA_FIRST_COL = 'F';
 
 function NO_OP() {}
 
@@ -22,64 +25,6 @@ function onOpen() {
   
   TOASTER.log(TOASTER.INFO, "Menu & scripts loaded!", 5);
 }
-
-function uiAvailable() {
-  try {
-    SpreadsheetApp.getUi();
-    return true;
-  } catch (error) {
-    return false;
-  }
-}
-
-function getSheetColumnsMap(sheetOrData) {
-  let columnsMap = new Map();
-  const headers = Array.isArray(sheetOrData) ? sheetOrData[0] : sheetOrData.getRange("1:1").getValues()[0];
-  headers.forEach((name) => columnsMap.set(name, headers.indexOf(name)));
-  return columnsMap;
-}
-
-/**
- * Converts row/col numbers to A1 notation
- * @param {number} row - Row number (1-indexed)
- * @param {number} col - Column number (1-indexed)
- * @returns {Array<string>} A1 notation (e.g., ['A', '1'], ['B', '5'])
- */
-function toA1Notation(row, col) {
-  let colStr = '';
-  let tempCol = col;
-  
-  while (tempCol > 0) {
-    tempCol--;
-    colStr = String.fromCharCode(65 + (tempCol % 26)) + colStr;
-    tempCol = Math.floor(tempCol / 26);
-  }
-  
-  return [colStr, row];
-}
-
-/**
- * Parses A1 notation to row/col numbers
- * @param {string} a1 - A1 notation (e.g., 'A1', 'B5', 'AA10')
- * @returns {Object} Object with row and col properties
- */
-function parseA1Notation(a1) {
-  const match = a1.match(/^\$?([A-Z]+)?\$?(\d+)?$/);
-  if (!match) throw new Error(`Invalid A1 notation: ${a1}`);
-  
-  const colStr = match[1] || null;
-  const row = parseInt(match[2]) || null;
-  
-  let col = null;
-  for (let i = 0; colStr != null && i < colStr.length; i++) {
-    col = col * 26 + (colStr.charCodeAt(i) - 64);
-  }
-  
-  return {row, col};
-}
-
-
-const MERGE_DATA_FIRST_COL = 'F';
 
 /**
  * Reads data and splits at MERGE_DATA_FIRST_COL
@@ -110,74 +55,6 @@ function getMergeData() {
   mergeDisplayData.shift();
 
   return { metaColumnsMap, metaData, mergeColumnsMap, mergeData, mergeDisplayData };
-}
-
-function getFileNameFromId(id) {
-  const file = DriveApp.getFileById(id);
-  const name = file.getName();
-  return name;
-}
-
-function transpose(matrix) {
-  return matrix[0].map((_, colIndex) => matrix.map(row => row[colIndex]));
-}
-
-function toBool(value) {
-  const strValue = String(value).toLowerCase();
-  return strValue === 'true' || strValue === 'yes' || strValue === '1' ? true : false;
-}
-
-const REPLACE_STATUS = Object.freeze({
-  OK: "OK",
-  NOT_FOUND: 'NOT_FOUND',
-  KEPT_RAW: 'RAW',
-  UNKNOWN: "UNKNOWN"
-});
-
-/**
- * Parses `string` into tokens, marking {{placeholders}} as special ones (and extracts offset and key).
- * Returns an array of tokens like [{raw:"text ", start:0, key:null}, {raw:"{{placeholder}}", start:5, key:"placeholder"}].
- */
-function tokenize(string) {
-  const tokens = [];
-
-  let currPos = 0;
-  const matches = Array.from(string.matchAll(TOKENIZER_REGEXP)); // allow placeholders to be in object notation (wrapped in {})
-  const numMatches = matches.length;
-  const stringLength = string.length;
-
-  for (let i=0; i<numMatches; i++) {
-    const currMatch = matches[i];
-    const nextMatch = i < numMatches-1 ? matches[i + 1] : null;
-    const key = currMatch[0].replace(/^{{|}}$/g, "");
-    if (currPos < currMatch.index) {
-      tokens.push({
-        raw: string.slice(currPos, currMatch.index),
-        start: currPos,
-        key: null
-      });
-    }
-    tokens.push({
-      raw: currMatch[0],
-      start: currMatch.index,
-      key: key
-    });
-    currPos = currMatch.index + currMatch[0].length;
-
-    if (nextMatch && currMatch.index + currMatch[0].length > nextMatch.index) {
-      throw "Next match within prev match!?";
-    }
-  }
-
-  if (currPos < stringLength - 1) {
-    tokens.push({
-      raw: string.slice(currPos),
-      start: currPos,
-      key: null
-    });
-  }
-
-  return tokens;
 }
 
 function fillTemplateSettingsTestCol() {
@@ -226,87 +103,6 @@ function fillTemplateSettingsTestCol() {
   testRange.setValues(testValues);
   Logger.log((testValues));
   return filledTemplateSettings;
-}
-
-function* iterateChildrenOf(section) {
-  let numElements = section.getNumChildren();
-  for (let i = 0; i < numElements; i++) {
-    let child = section.getChild(i);
-    let type = child.getType();
-    yield { child, type, index:i };
-  }
-}  
-
-function appendSectionTo(sourceSection, targetSection) {
-  let numElements = sourceSection.getNumChildren();
-  for (let i = 0; i < numElements; i++) {
-    let child = sourceSection.getChild(i);
-    let copy = child.copy();
-    let type = child.getType();
-
-    Logger.log(`Trying to append type ${type}`);
-    switch (type) {
-      case DocumentApp.ElementType.PARAGRAPH:
-        targetSection.appendParagraph(copy);
-        break;
-      
-      case DocumentApp.ElementType.TABLE:
-        targetSection.appendTable(copy);
-        break;
-      
-      case DocumentApp.ElementType.LIST_ITEM:
-        targetSection.appendListItem(copy);
-        copy.setGlyphType(child.getGlyphType());
-        break;
-
-      /*
-      case DocumentApp.ElementType.INLINE_IMAGE:
-        targetSection.appendImage(copy.asInlineImage());
-        break;
-      
-      case DocumentApp.ElementType.HORIZONTAL_RULE:
-        targetSection.appendTable(copy.asHorizontalRule());
-        break;
-      */
-      
-      default:
-        throw new Error(`Unsupported type ${type}`);
-        break;
-    }
-  }
-}
-
-function appendDocTo(sourceDoc, targetDoc, { header = false, footer = false }) {
-  
-  const sourceBody = sourceDoc.getBody();
-  const targetBody = targetDoc.getBody();
-
-  appendSectionTo(sourceBody, targetBody);
-
-  // get header/footer from first tab
-  if (header || footer) {
-    const sourceTabs = sourceDoc.getTabs();
-    const sourceFirstTab = sourceTabs[0].asDocumentTab();
-    const targetTabs = targetDoc.getTabs();
-    const targetFirstTab = targetTabs[0].asDocumentTab();
-
-    if (header) {
-      const sourceHeader = sourceFirstTab.getHeader();
-      if (sourceHeader) {
-        Logger.log(`Trying to append type ${sourceHeader.getType()}`);
-        let targetHeader = targetFirstTab.getHeader() ?? targetFirstTab.addHeader();
-        appendSectionTo(sourceHeader, targetHeader);
-      }
-    }
-    if (footer) {
-      const sourceFooter = sourceFirstTab.getFooter();
-      if (sourceFooter) {
-        Logger.log(`Trying to append type ${sourceFooter.getType()}`);
-        let targetFooter = targetFirstTab.getFooter() ?? targetFirstTab.addFooter();
-        appendSectionTo(sourceFooter, targetFooter);
-      }
-    }
-  }
 }
 
 function merge() {
@@ -457,31 +253,6 @@ function merge() {
     G.ui.alert(TOASTER.ERROR, error, G.ui.ButtonSet.OK);
     throw error;
   }*/
-}
-
-function convertDocToPdf(pdfName, doc, outputFolder) {
-  const blob = doc.getAs('application/pdf');
-  const pdfFile = outputFolder.createFile(blob);
-  pdfFile.setName(pdfName);
-  return pdfFile;
-}
-
-function findPlaceholders(body, pattern) {
-  return Array.from(findAllText(body, DOC_PLACEHOLDERS_PATTERN));
-}
-
-/**
- * Generator that finds all the entries when searching.
- * @param {DocumentApp.Body} body Body of the file.
- * @param {string} text Text to find.
- * @returns {Iterator.<DocumentApp.RangeElement>}
- */
-function* findAllText(body, text) {
-  let entry = body.findText(text);
-  while(entry != null) {
-    yield entry;
-    entry = body.findText(text, entry);
-  }
 }
 
 // exported functions

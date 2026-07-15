@@ -88,7 +88,6 @@ class Interpolator {
   }
 
   interpolate(template) {
-
     const items = [];
 
     for (const token of this.tokenize(template)) {
@@ -102,12 +101,10 @@ class Interpolator {
   }
 
   tokenize(string) {
-
     const tokens = [];
     let pos = 0;
 
     for (const match of string.matchAll(TOKENIZER_REGEXP)) {
-
       if (match.index > pos) {
         tokens.push({
           raw: string.slice(pos, match.index),
@@ -118,7 +115,7 @@ class Interpolator {
 
       tokens.push({
         raw: match[0],
-        key: match[0].replace(/^{{|}}$/g, ""),
+        key: match[0].replace(DETOKENIZER_REGEXP, ""),
         start: match.index,
       });
 
@@ -137,14 +134,12 @@ class Interpolator {
   }
 
   resolve(token) {
-
     if (!token.key)
       return [textItem(token.raw)];
 
     const node = this.parse(token);
 
     switch (node.kind) {
-
       case "field":
         return this.resolveField(node);
 
@@ -160,13 +155,10 @@ class Interpolator {
   }
 
   parse(token) {
-
     const key = token.key;
 
     if (key.startsWith("{")) {
-
       try {
-
         const obj = JSON.parse(key);
 
         return {
@@ -174,9 +166,7 @@ class Interpolator {
           name: obj.type,
           args: obj,
         };
-
       } catch {
-
         return {
           kind: "invalid"
         };
@@ -184,7 +174,6 @@ class Interpolator {
     }
 
     if (this.functions.has(key)) {
-
       return {
         kind: "function",
         name: key,
@@ -198,7 +187,6 @@ class Interpolator {
   }
 
   resolveField(node) {
-
     const idx = this.columnsMap.get(node.name);
 
     if (idx == null)
@@ -210,14 +198,12 @@ class Interpolator {
   }
 
   resolveFunction(node) {
-
     const fn = this.functions.get(node.name);
 
     return fn(this.context);
   }
 
   resolveCommand(node) {
-
     const fn = this.commands.get(node.name);
 
     if (!fn)
@@ -230,11 +216,9 @@ class Interpolator {
   }
 
   mergeAdjacentText(items) {
-
     const merged = [];
 
     for (const item of items) {
-
       const last = merged[merged.length - 1];
 
       if (
@@ -310,79 +294,6 @@ function getMatchFromRangeElement(rangeElement, context) {
     endInclusive,
     matched
   }
-}
-
-function getRangeRuns(range) {
-  const numberFormats = range.getNumberFormats();
-  
-  // temporarily set all formats to String (otherwise cells formatted as numbers report empty richTextValues)
-  const stringFormats = numberFormats.map(row => row.map(cell => '@'));
-  range.setNumberFormats(stringFormats);
-
-  const richTextValues = range.getRichTextValues();
-  const backgrounds = range.getBackgrounds();
-
-  let docCells = [];
-  for (let row = 0; row < richTextValues.length; row++) {
-    let docRow = [];
-    for (let col = 0; col < richTextValues[0].length; col++) {
-      let docCell = [];
-      const richTextValue = richTextValues[row][col];
-      const background = backgrounds[row][col];
-      for (let run of richTextValue.getRuns()) {
-        const text = run.getText();
-        let docRun = { text: text };
-        let attrs = {};
-        
-        // defaults
-        attrs["STRIKETHROUGH"] = null;
-        attrs["ITALIC"] = null;
-        attrs["FOREGROUND_COLOR"] = null;
-        attrs["BACKGROUND_COLOR"] = null;
-        attrs["LINK_URL"] = null;
-        attrs["UNDERLINE"] = null,
-        attrs["FONT_SIZE"] = null;
-        attrs["FONT_FAMILY"] = null;
-        attrs["BOLD"] = null;
-
-        let start = run.getStartIndex();
-        let endInclusive = run.getEndIndex() - 1;
-        if (start < endInclusive) {
-          let textStyle = run.getTextStyle(start, endInclusive);
-          let fontFamily = textStyle.getFontFamily();
-          let fontSize = textStyle.getFontSize();
-          let fontColor = textStyle.getForegroundColorObject().asRgbColor().asHexString();
-          let bold = textStyle.isBold();
-          let italic = textStyle.isItalic();
-          let strikeThrough = textStyle.isStrikethrough();
-          let underLine = textStyle.isUnderline();
-
-          attrs["STRIKETHROUGH"] = strikeThrough;
-          attrs["ITALIC"] = italic;
-          attrs["FOREGROUND_COLOR"] = fontColor;
-          attrs["BACKGROUND_COLOR"] = background;
-          attrs["LINK_URL"] = null;
-          attrs["UNDERLINE"] = underLine,
-          attrs["FONT_SIZE"] = fontSize;
-          attrs["FONT_FAMILY"] = fontFamily;
-          attrs["BOLD"] = bold;
-        }
-
-        docRun.start = start;
-        docRun.endInclusive = endInclusive;
-        docRun["attrs"] = attrs;
-        docCell.push(docRun);
-      }
-      docRow.push(docCell);
-    }
-    docCells.push(docRow);
-  }
-
-  // restore formats
-  range.setNumberFormats(numberFormats);
-
-  Logger.log(JSON.stringify(docCells));
-  return docCells;
 }
 
 function getMatchAttributes(matchElement) {
@@ -555,11 +466,9 @@ function renderLinkItem(item, matchElement) {
 }
 
 function renderToMatchElement(items, matchElement) {
-
   for (const item of items) {
     Logger.log(JSON.stringify([matchElement.matched, item]));
     switch (item.kind) {
-
       case "text": {
         renderTextItem(item, matchElement);
         break;
@@ -599,6 +508,5 @@ function renderToMatchElement(items, matchElement) {
         
     }
   }
-
 }
 
