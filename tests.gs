@@ -145,7 +145,7 @@ function getSectionStructure(section) {
     maxStepsReached = step >= MAX_STEPS;
   }
 
-  Logger.log(`numElements: ${id + 1} steps:${step} maxLevel:${level}`);
+  Logger.log(`numElements:${id + 1} steps:${step} maxLevel:${level}`);
   return { tree, maxStepsReached };
 }
 
@@ -265,6 +265,11 @@ function getAsTyped(element, typedAs=null) {
   return typed;
 }
 
+function logToSheet(rowData) {
+  const sheet = G.ss.getSheetByName("log");
+  sheet.appendRow(rowData);
+}
+
 function getDocStructure() {
   //const DOC_ID = "1CA7WCoXleWHWqT2dEyjt3DDxTwZKlcWli_kz9Y767-Q"; // with inline image inside paragraph
   //const DOC_ID = "1Xtyi4fxIh3EDZ-e97Bd-Mop5lLgQbiG4JfFGSu5Pel4"; // without
@@ -277,8 +282,7 @@ function getDocStructure() {
   const { tree, maxStepsReached } = getSectionStructure(body);
 
   //Logger.log(JSON.stringify(tree));
-  const sheet = G.ss.getSheetByName("log");
-  sheet.appendRow([maxStepsReached, JSON.stringify(tree)]);
+  logToSheet([maxStepsReached, JSON.stringify(tree)]);
   if (maxStepsReached) Logger.log("MAX_STEPS REACHED!");
 }
 
