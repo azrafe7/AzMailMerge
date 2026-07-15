@@ -346,18 +346,29 @@ function merge() {
     let mergeAllFile = null;
     let mergeAllFileName = null;
     let mergeAllDoc = null;
+    let mergeAllBody = null;
+    let mergeAllFirstEmptyParagraph = null;
     let mergeAll = toBool(filledTemplateSettings[TSETTING_MERGE_ALL]);
     if (mergeAll) {
       mergeAllFileName = fileName + " _MERGE_ALL";
+      /*
       mergeAllDoc = DocumentApp.create(mergeAllFileName);
       mergeAllFile = DriveApp.getFileById(mergeAllDoc.getId());
       mergeAllFile.moveTo(templateFolder);
+      */
+      const copy = file.makeCopy(mergeAllFileName, templateFolder);
+      mergeAllDoc = DocumentApp.openById(copy.getId());
+      mergeAllBody = mergeAllDoc.getBody();
+      mergeAllBody.clear();
+
+      // store first empty paragraph (will be removed later)
+      mergeAllFirstEmptyParagraph = mergeAllBody.getChild(0);
     }
 
     let docs = [];
 
     let isFirstDoc = true;
-    for (let rowIndex=0; rowIndex < 1; rowIndex++) {
+    for (let rowIndex=0; rowIndex < 2; rowIndex++) {
       const copyName = String(templateSettings[TSETTING_DOC_NAME_FORMAT]) === '' ? fileName + '_' + String(rowIndex).padStart(2, "0") : filledTemplateSettings[TSETTING_DOC_NAME_FORMAT];
       const copy = file.makeCopy(copyName, templateFolder);
       const pdfName = String(templateSettings[TSETTING_PDF_NAME_FORMAT]) === '' ? fileName + '_' + String(rowIndex).padStart(2, "0") : filledTemplateSettings[TSETTING_PDF_NAME_FORMAT];
@@ -401,7 +412,8 @@ function merge() {
       
       if (mergeAll) {
         appendDocTo(doc, mergeAllDoc, { header:isFirstDoc, footer:isFirstDoc });
-        mergeAllDoc.getBody().appendPageBreak();
+        if (isFirstDoc) mergeAllFirstEmptyParagraph.removeFromParent();
+        mergeAllBody.appendPageBreak();
       }
       
       doc.saveAndClose();
@@ -478,3 +490,4 @@ var AzMM = {
   showTemplateSettings: showTemplateSettings,
   merge: merge
 }
+
