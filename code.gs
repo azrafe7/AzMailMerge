@@ -228,27 +228,35 @@ function fillTemplateSettingsTestCol() {
   return filledTemplateSettings;
 }
 
+function* iterateChildrenOf(section) {
+  let numElements = section.getNumChildren();
+  for (let i = 0; i < numElements; i++) {
+    let child = section.getChild(i);
+    let type = child.getType();
+    yield { child, type, index:i };
+  }
+}  
+
 function appendSectionTo(sourceSection, targetSection) {
-  var numElements = sourceSection.getNumChildren();
-  for (var i = 0; i < numElements; i++) {
-    var child = sourceSection.getChild(i);
-    var copy = child.copy();
-    var type = child.getType();
+  let numElements = sourceSection.getNumChildren();
+  for (let i = 0; i < numElements; i++) {
+    let child = sourceSection.getChild(i);
+    let copy = child.copy();
+    let type = child.getType();
 
     Logger.log(`Trying to append type ${type}`);
     switch (type) {
       case DocumentApp.ElementType.PARAGRAPH:
-        targetSection.appendParagraph(copy.asParagraph());
+        targetSection.appendParagraph(copy);
         break;
       
       case DocumentApp.ElementType.TABLE:
-        targetSection.appendTable(copy.asTable());
+        targetSection.appendTable(copy);
         break;
       
       case DocumentApp.ElementType.LIST_ITEM:
-        const listItemCopy = copy.asListItem();
-        targetSection.appendListItem(listItemCopy);
-        listItemCopy.setGlyphType(child.asListItem().getGlyphType());
+        targetSection.appendListItem(copy);
+        copy.setGlyphType(child.getGlyphType());
         break;
 
       /*
@@ -349,7 +357,7 @@ function merge() {
     let docs = [];
 
     let isFirstDoc = true;
-    for (let rowIndex=0; rowIndex < 2; rowIndex++) {
+    for (let rowIndex=0; rowIndex < 1; rowIndex++) {
       const copyName = String(templateSettings[TSETTING_DOC_NAME_FORMAT]) === '' ? fileName + '_' + String(rowIndex).padStart(2, "0") : filledTemplateSettings[TSETTING_DOC_NAME_FORMAT];
       const copy = file.makeCopy(copyName, templateFolder);
       const pdfName = String(templateSettings[TSETTING_PDF_NAME_FORMAT]) === '' ? fileName + '_' + String(rowIndex).padStart(2, "0") : filledTemplateSettings[TSETTING_PDF_NAME_FORMAT];
