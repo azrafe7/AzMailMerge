@@ -5,14 +5,6 @@ function textItem(value) {
   };
 }
 
-function imageItem(blob, options = {}) {
-  return {
-    kind: "image",
-    blob,
-    ...options
-  };
-}
-
 function pageBreakItem() {
   return {
     kind: "pagebreak",
@@ -48,6 +40,7 @@ function getCommandsMap() {
       {
         kind: "image",
         fileId: args.fileId,
+        url: args.url,
         width: args.width,
         height: args.height,
       }
@@ -491,8 +484,14 @@ function renderImageBlob(item, matchElement, blob) {
 }
 
 function renderImageItem(item, matchElement) {
-  const file = DriveApp.getFileById(item.fileId);
-  const blob = file.getAs('image/png');
+  let blob = null;
+  if (item.fileId) {
+    const file = DriveApp.getFileById(item.fileId);
+    blob = file.getAs('image/png');
+  } else if (item.url) {
+    const response = UrlFetchApp.fetch(item.url);
+    blob = response.getBlob();
+  }
 
   const inlineImage = renderImageBlob(item, matchElement, blob);
 }
