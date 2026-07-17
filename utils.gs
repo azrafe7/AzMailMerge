@@ -90,7 +90,7 @@ function appendSectionTo(sourceSection, targetSection) {
     let copy = child.copy();
     let type = child.getType();
 
-    Logger.log(`Trying to append type ${type}`);
+    Logger.log(`Appending type ${type}`);
     switch (type) {
       case DocumentApp.ElementType.PARAGRAPH: {
         targetSection.appendParagraph(copy);
@@ -429,6 +429,6 @@ function getAsTyped(element, typedAs=null) {
 
 function logToSheet(rowData) {
   const sheet = G.ss.getSheetByName(LOG_SHEET);
-  sheet.appendRow(rowData);
+  sheet.appendRow(Array.isArray(rowData) ? rowData : [rowData]);
 }
 
