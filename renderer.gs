@@ -44,9 +44,14 @@ class TextRenderer {
 }
 
 class DocRenderer {
-  constructor() { }
+  constructor() { 
+    this.cursor = null;
+  }
 
   render(items, matchElement) {
+    this.attrs = this.getMatchAttributes(matchElement);
+    this.cursor = this.splitMatch(matchElement);
+
     for (const item of items) {
       Logger.log(JSON.stringify([matchElement.matched, item]));
       switch (item.kind) {
@@ -89,6 +94,8 @@ class DocRenderer {
           
       }
     }
+
+    this.cursor.after.merge();
   }
 
   getMatchFromRangeElement(rangeElement, context) {
@@ -134,61 +141,59 @@ class DocRenderer {
     this.setTextAttributes(matchElement.textElement, start, endInclusive, attrs);
   }
 
-  replaceMatchText(matchElement, text) {
-    // delete text and insert replacement
-    if (matchElement.endInclusive > matchElement.start) { // as deleteText(10, 10) will still erase one char
-      matchElement.textElement.deleteText(matchElement.start, matchElement.endInclusive);
-    }
-    matchElement.textElement.insertText(matchElement.start, text);
-  }
+  splitMatch(matchElement) {
+    const parent = matchElement.rangeElement.getElement().getParent();
+    const textElementIndex = parent.getChildIndex(matchElement.textElement);
+    const before = parent;
+    const after = parent.copy();
+    const numChildren = parent.getNumChildren();
 
-  splitElement(element, start, endInclusive) {
-    const before = element.copy();
-    const after = element.copy();
-    before.editAsText().deleteText(start, element.getText().length - 1);
-    after.editAsText().deleteText(0, endInclusive);
-    const parent = element.getParent();
-    const childIndex = parent.getChildIndex(element);
-    const type = element.getType();
+    // remove matched text and everything after it
+    for (let childIndex = numChildren - 1; childIndex > textElementIndex; childIndex--) {
+      before.getChild(childIndex).removeFromParent();
+    }
+    let matchedTextElement = matchElement.textElement;
+    matchedTextElement.deleteText(matchElement.start, matchElement.text.length - 1);
+
+    // remove matched text and everything before it
+    for (let childIndex = textElementIndex - 1; childIndex >= 0; childIndex--) {
+      after.getChild(childIndex).removeFromParent();
+    }
+    matchedTextElement = after.getChild(0);
+    matchedTextElement.deleteText(0, matchElement.endInclusive);
+
+    const grandParent = parent.getParent();
+    const childIndex = grandParent.getChildIndex(parent);
+    const type = parent.getType();
     let insertFn = () => {};
     switch (type) {
       case DocumentApp.ElementType.PARAGRAPH:
-        insertFn = parent.insertParagraph;
+        insertFn = grandParent.insertParagraph;
         break;
       case DocumentApp.ElementType.LIST_ITEM:
-        insertFn = parent.insertListItem;
+        insertFn = grandParent.insertListItem;
         break;
       default:
         throw new Error(`[split] Unsupported type ${type}`);
     }
-    insertFn(childIndex, before);
     insertFn(childIndex + 1, after);
-    element.removeFromParent();
 
-    return {before, after, betweenIndex:childIndex + 1, parent};
+    return {before, after, betweenIndex:childIndex + 1, grandParent};
   }
 
   renderSplitItem(item, matchElement) {
-    const parent = matchElement.rangeElement.getElement().getParent();
-    const splitted = this.splitElement(parent, matchElement.start, matchElement.endInclusive);
   }
 
   renderTextItem(item, matchElement, callback) {
-    const attrs = this.getMatchAttributes(matchElement);
-    this.replaceMatchText(matchElement, item.value);
+    this.cursor.before.appendText(item.value);
+    matchElement.textElement = this.cursor.before.editAsText();
+
     if (callback) callback(item, matchElement);
-    this.setMatchAttributes(matchElement, matchElement.start, matchElement.start + item.value.length - 1, attrs);
-    // update the position
-    matchElement.start = matchElement.start + item.value.length;
-    matchElement.endInclusive = matchElement.start;
+    this.setMatchAttributes(matchElement, matchElement.start, matchElement.start + item.value.length - 1, this.attrs);
   }
 
   renderImageBlob(item, matchElement, blob) {
-    const parent = matchElement.rangeElement.getElement().getParent();
-
-    const splitted = this.splitElement(parent, matchElement.start, matchElement.endInclusive);
-    const inlineImage = splitted.before.appendInlineImage(blob);
-    splitted.after.merge();
+    const inlineImage = this.cursor.before.appendInlineImage(blob);
 
     if (item.width || item.height) {
       const w = inlineImage.getWidth();
@@ -234,20 +239,17 @@ class DocRenderer {
   }
 
   renderTableItem(item, matchElement) {
-    this.replaceMatchText(matchElement, "");
-    const p = matchElement.rangeElement.getElement().getParent().asParagraph();
     const namedRange = G.ss.getRangeByName(item.src);
     const dataRange = namedRange ? namedRange : G.ss.getRange(item.src);
     if (dataRange == null) return;
 
     const values = dataRange.getDisplayValues();
-    const body = matchElement.context.body;
-    const childIndex = body.getChildIndex(p);
+    const childIndex = this.cursor.parent.getChildIndex(this.cursor.before);
 
     if (!item.format) {
-      body.insertTable(childIndex, values);
+      this.cursor.parent.insertTable(childIndex, values);
     } else {
-      const table = body.insertTable(childIndex);
+      const table = this.cursor.parent.insertTable(childIndex);
       const rangeRuns = getRangeRuns(dataRange);
       
       rangeRuns.forEach(row => {
@@ -269,9 +271,7 @@ class DocRenderer {
   }
 
   renderPageBreakItem(item, matchElement) {
-    this.replaceMatchText(matchElement, "");
-    const p = matchElement.rangeElement.getElement().getParent();
-    p.insertPageBreak(0);
+    this.cursor.before.appendPageBreak();
   }
 
   renderLinkItem(item, matchElement) {
