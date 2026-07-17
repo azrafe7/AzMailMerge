@@ -254,7 +254,7 @@ function merge() {
       Logger.log(`Merged all into '${mergeDoc.fileName}'`);
       if (toBool(filledTemplateSettings[TSETTING_CREATE_PDF])) {
         try {
-          pdfFile = convertDocToPdf(mergeDoc.fileName, mergDoc.doc, templateFolder);
+          pdfFile = convertDocToPdf(mergeDoc.fileName, mergeDoc.doc, templateFolder);
         } catch (error) {
           G.ui.alert(TOASTER.ERROR, error, G.ui.ButtonSet.OK);
           throw error;
