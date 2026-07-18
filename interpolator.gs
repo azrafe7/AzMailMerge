@@ -106,7 +106,19 @@ class Interpolator {
     if (!token.key)
       return [textItem(token.raw)];
 
-    const node = this.parse(token);
+    // If the token contains templates, interpolate it first
+    let key = token.key;
+    if (key.includes("{{")) {
+      // Interpolate the key content
+      const interpolated = this.interpolate(key);
+      // Merge text items back into a string
+      key = interpolated.items
+        .filter(item => item.kind === "text")
+        .map(item => item.value)
+        .join("");
+    }
+
+    const node = this.parse({ ...token, key });
 
     switch (node.kind) {
       case "field":
