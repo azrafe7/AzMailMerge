@@ -3,8 +3,6 @@ const LOG_SHEET = 'log';
 const TEMPLATE_SETTINGS_TEST_COL = 'TEST';
 
 const DOC_PLACEHOLDERS_PATTERN = "{{([^{}}]+|{[^}]+})}}";
-const TOKENIZER_REGEXP = new RegExp("{{([^{}}]+|{[^}]+})}}", "g"); // allow placeholders to be in object notation (wrapped in {})
-const DETOKENIZER_REGEXP = new RegExp("^{{|}}$", "g"); // remove wrapping {{ }}
 
 const MERGE_DATA_FIRST_COL = 'F';
 

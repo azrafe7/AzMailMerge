@@ -92,47 +92,14 @@ class Interpolator {
   interpolate(template) {
     const items = [];
 
-    for (const token of this.tokenize(template)) {
+    const tokenizer = new TemplateTokenizer(template);
+    const tokens = tokenizer.tokenize();
+    
+    for (const token of tokens) {
       items.push(...this.resolve(token));
     }
 
-    return {
-      items
-      //items: this.mergeAdjacentText(items)
-    };
-  }
-
-  tokenize(string) {
-    const tokens = [];
-    let pos = 0;
-
-    for (const match of string.matchAll(TOKENIZER_REGEXP)) {
-      if (match.index > pos) {
-        tokens.push({
-          raw: string.slice(pos, match.index),
-          key: null,
-          start: pos,
-        });
-      }
-
-      tokens.push({
-        raw: match[0],
-        key: match[0].replace(DETOKENIZER_REGEXP, ""),
-        start: match.index,
-      });
-
-      pos = match.index + match[0].length;
-    }
-
-    if (pos < string.length) {
-      tokens.push({
-        raw: string.slice(pos),
-        key: null,
-        start: pos,
-      });
-    }
-
-    return tokens;
+    return { items };
   }
 
   resolve(token) {
@@ -211,10 +178,36 @@ class Interpolator {
     if (!fn)
       return [textItem(`{{${JSON.stringify(node.args)}}}`)];
 
+    // Recursively interpolate any string values in args that contain templates
+    const interpolatedArgs = this.interpolateArgs(node.args);
+
     return fn({
       ...this.context,
-      args: node.args
+      args: interpolatedArgs
     });
+  }
+
+  interpolateArgs(args) {
+    const interpolated = {};
+    
+    for (const [key, value] of Object.entries(args)) {
+      if (typeof value === "string" && value.includes("{{")) {
+        // Recursively interpolate this string value
+        const result = this.interpolate(value);
+        // If it results in plain text, use the combined text
+        interpolated[key] = result.items
+          .filter(item => item.kind === "text")
+          .map(item => item.value)
+          .join("");
+      } else if (typeof value === "object" && value !== null && !Array.isArray(value)) {
+        // Recursively handle nested objects
+        interpolated[key] = this.interpolateArgs(value);
+      } else {
+        interpolated[key] = value;
+      }
+    }
+    
+    return interpolated;
   }
 
   mergeAdjacentText(items) {
@@ -235,6 +228,175 @@ class Interpolator {
     }
 
     return merged;
+  }
+}
+
+class TemplateTokenizer {
+  constructor(string) {
+    this.string = string;
+    this.pos = 0;
+  }
+
+  tokenize() {
+    const tokens = [];
+    
+    while (this.pos < this.string.length) {
+      const textToken = this.readText();
+      if (textToken) {
+        tokens.push(textToken);
+      }
+      
+      if (this.pos < this.string.length) {
+        const templateToken = this.readTemplate();
+        if (templateToken) {
+          tokens.push(templateToken);
+        } else {
+          // Malformed, just consume {{
+          tokens.push({
+            raw: "{{",
+            key: null,
+            start: this.pos,
+          });
+          this.pos += 2;
+        }
+      }
+    }
+    
+    return tokens;
+  }
+
+  readText() {
+    const start = this.pos;
+    while (this.pos < this.string.length) {
+      if (this.string[this.pos] === "{" && this.string[this.pos + 1] === "{") {
+        break;
+      }
+      this.pos++;
+    }
+
+    if (this.pos > start) {
+      return {
+        raw: this.string.slice(start, this.pos),
+        key: null,
+        start,
+      };
+    }
+    return null;
+  }
+
+  readTemplate() {
+    const start = this.pos;
+    
+    if (this.string[this.pos] !== "{" || this.string[this.pos + 1] !== "{") {
+      return null;
+    }
+
+    this.pos += 2; // consume {{
+
+    // Check if it's a JSON command
+    this.skipWhitespace();
+    const isJson = this.string[this.pos] === "{";
+
+    let content;
+    if (isJson) {
+      content = this.readJsonCommand();
+    } else {
+      content = this.readPlaceholder();
+    }
+
+    if (!content) {
+      this.pos = start; // Reset on error
+      return null;
+    }
+
+    // Consume closing }}
+    this.skipWhitespace();
+    if (this.string[this.pos] !== "}" || this.string[this.pos + 1] !== "}") {
+      this.pos = start;
+      return null;
+    }
+
+    const endPos = this.pos + 2;
+    const raw = this.string.slice(start, endPos);
+    
+    this.pos = endPos;
+
+    return {
+      raw,
+      key: content,
+      start,
+    };
+  }
+
+  readJsonCommand() {
+    const start = this.pos;
+    let depth = 0;
+
+    while (this.pos < this.string.length) {
+      const char = this.string[this.pos];
+
+      if (char === '"') {
+        // Skip string
+        this.pos++;
+        this.skipQuotedString();
+        continue;
+      }
+
+      if (char === "{") {
+        depth++;
+      } else if (char === "}") {
+        depth--;
+        if (depth === 0) {
+          // Found closing }
+          const content = this.string.slice(start, this.pos + 1);
+          this.pos++;
+          return content;
+        }
+      }
+
+      this.pos++;
+    }
+
+    return null;
+  }
+
+  readPlaceholder() {
+    const start = this.pos;
+
+    while (this.pos < this.string.length) {
+      if (this.string[this.pos] === "}" && this.string[this.pos + 1] === "}") {
+        const content = this.string.slice(start, this.pos);
+        return content.trim();
+      }
+      this.pos++;
+    }
+
+    return null;
+  }
+
+  skipQuotedString() {
+    // this.pos should be after the opening "
+    while (this.pos < this.string.length) {
+      const char = this.string[this.pos];
+
+      if (char === "\\") {
+        this.pos += 2; // Skip escaped char
+        continue;
+      }
+
+      if (char === '"') {
+        this.pos++;
+        break;
+      }
+
+      this.pos++;
+    }
+  }
+
+  skipWhitespace() {
+    while (this.pos < this.string.length && /\s/.test(this.string[this.pos])) {
+      this.pos++;
+    }
   }
 }
 
