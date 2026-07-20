@@ -392,6 +392,104 @@ function getPageElementStructure(section, callback) {
   return { tree, maxStepsReached };
 }
 
+// for slides
+function getColorAsRgb(color, colorScheme) {
+  const colorType = color.getColorType();
+  let concreteColor = null;
+  if (colorType === SlidesApp.ColorType.RGB) {
+    concreteColor = color.asRgbColor();
+  } else if (colorType === SlidesApp.ColorType.THEME) {
+    const themeColor = color.asThemeColor().getThemeColorType();
+    concreteColor = colorScheme.getConcreteColor(themeColor).asRgbColor();
+  } else {
+    throw new Error(`Unsupported color type ${colorType}`);
+  }
+
+  return concreteColor;
+}
+
+// for slides
+function getTextRangeAttrs(tr, colorScheme) {
+  let docRuns = [];
+  for (let run of tr.getRuns()) {
+    docRun = {};
+    const text = run.asString();
+    let attrs = {};
+    
+    // defaults
+    attrs["STRIKETHROUGH"] = null;
+    attrs["ITALIC"] = null;
+    attrs["FOREGROUND_COLOR"] = null;
+    attrs["BACKGROUND_COLOR"] = null;
+    attrs["LINK_URL"] = null;
+    attrs["UNDERLINE"] = null,
+    attrs["FONT_SIZE"] = null;
+    attrs["FONT_FAMILY"] = null;
+    attrs["FONT_WEIGHT"] = null;
+    attrs["BOLD"] = null;
+
+    let start = run.getStartIndex();
+    let end = run.getEndIndex();
+    if (start < end) {
+      let textStyle = run.getTextStyle();
+      let fontFamily = textStyle.getFontFamily();
+      let fontSize = textStyle.getFontSize();
+      let fontWeight = textStyle.getFontWeight();
+      let fontColor = getColorAsRgb(textStyle.getForegroundColor(), colorScheme)?.asHexString();
+      let background = textStyle.isBackgroundTransparent ? null : getColorAsRgb(textStyle.getBackgroundColor(), colorScheme)?.asHexString();
+      let bold = textStyle.isBold();
+      let italic = textStyle.isItalic();
+      let strikeThrough = textStyle.isStrikethrough();
+      let underLine = textStyle.isUnderline();
+
+      attrs["STRIKETHROUGH"] = strikeThrough;
+      attrs["ITALIC"] = italic;
+      attrs["FOREGROUND_COLOR"] = fontColor;
+      attrs["BACKGROUND_COLOR"] = background;
+      attrs["LINK_URL"] = null;
+      attrs["UNDERLINE"] = underLine,
+      attrs["FONT_SIZE"] = fontSize;
+      attrs["FONT_FAMILY"] = fontFamily;
+      //attrs["FONT_WEIGHT"] = fontWeight;
+      attrs["BOLD"] = bold;
+    }
+
+    docRun.text = text;
+    docRun.start = start;
+    docRun.end = end;
+    docRun["attrs"] = attrs;
+    docRuns.push(docRun);
+  }
+
+  Logger.log(JSON.stringify(docRuns));
+  return docRuns;
+}
+
+// for slides
+function setTextRangeAttrs(tr, attrs, onlyNonNull=true) {  
+  const fnMap = {
+    "STRIKETHROUGH": "setStrikethrough",
+    "ITALIC": "setItalic",
+    "FOREGROUND_COLOR": "setForegroundColor",
+    "BACKGROUND_COLOR": "setBackgroundColor",
+    "LINK_URL": "setLinkUrl",
+    "UNDERLINE": "setUnderline",
+    "FONT_SIZE": "setFontSize",
+    "FONT_FAMILY": "setFontFamily",
+    //"FONT_WEIGHT": "setFontWeight",
+    "BOLD": "setBold",
+  };
+  const textStyle = tr.getTextStyle();
+  // set attributes (optionally only non null values, to prevent not inheriting attributes from parent, and messing things up!)
+  for (const [attr, value] of Object.entries(attrs)) {
+    if (value != null && onlyNonNull) {
+      //Logger.log(fnMap[attr])
+      //Logger.log(textStyle[fnMap[attr]])
+      textStyle[fnMap[attr]](value);
+    }
+  }
+}
+
 function getSectionStructure(section) {
   let tree = {};
   let parentsMap = {};
