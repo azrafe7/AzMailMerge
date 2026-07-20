@@ -158,7 +158,7 @@ function getTextRangeAttrs(tr, colorScheme) {
       let fontSize = textStyle.getFontSize();
       let fontWeight = textStyle.getFontWeight();
       let fontColor = getColorAsRgb(textStyle.getForegroundColor(), colorScheme)?.asHexString();
-      let background = getColorAsRgb(textStyle.getBackgroundColor(), colorScheme)?.asHexString();
+      let background = textStyle.isBackgroundTransparent ? null : getColorAsRgb(textStyle.getBackgroundColor(), colorScheme)?.asHexString();
       let bold = textStyle.isBold();
       let italic = textStyle.isItalic();
       let strikeThrough = textStyle.isStrikethrough();
