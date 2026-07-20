@@ -50,6 +50,7 @@ class DocRenderer {
 
   render(items, matchElement) {
     this.attrs = this.getMatchAttributes(matchElement);
+    Logger.log(JSON.stringify(this.attrs));
     this.cursor = this.splitMatch(matchElement);
 
     for (const item of items) {

@@ -102,7 +102,7 @@ function test_getSectionStructure() {
   //const DOC_ID = "1CA7WCoXleWHWqT2dEyjt3DDxTwZKlcWli_kz9Y767-Q"; // with inline image inside paragraph
   //const DOC_ID = "1Xtyi4fxIh3EDZ-e97Bd-Mop5lLgQbiG4JfFGSu5Pel4"; // without
   //const DOC_ID = "1VaS4kPTCm6kAon5pI7RY-1H6Rd19g6Fj0hm0m1BepLg"; // test
-  const DOC_ID = "19VfFKqV5fihG5RkLcSTAK8QXV_uT2qFC5mLcN2T2Pdg";
+  const DOC_ID = "1t5zeo633NvEjWByJQIT_8hea9XE_L9PDd5zH2yW5ZLI";
   
   const doc = DocumentApp.openById(DOC_ID);
   const body = doc.getBody();
@@ -112,5 +112,136 @@ function test_getSectionStructure() {
   //Logger.log(JSON.stringify(tree));
   logToSheet([maxStepsReached, JSON.stringify(tree)]);
   if (maxStepsReached) Logger.log("MAX_STEPS REACHED!");
+}
+
+// for slides
+function getColorAsRgb(color, colorScheme) {
+  const colorType = color.getColorType();
+  let concreteColor = null;
+  if (colorType === SlidesApp.ColorType.RGB) {
+    concreteColor = color.asRgbColor();
+  } else if (colorType === SlidesApp.ColorType.THEME) {
+    const themeColor = color.asThemeColor().getThemeColorType();
+    concreteColor = colorScheme.getConcreteColor(themeColor).asRgbColor();
+  } else {
+    throw new Error(`Unsupported color type ${colorType}`);
+  }
+
+  return concreteColor;
+}
+
+// for slides
+function getTextRangeAttrs(tr, colorScheme) {
+  let docRuns = [];
+  for (let run of tr.getRuns()) {
+    docRun = {};
+    const text = run.asString();
+    let attrs = {};
+    
+    // defaults
+    attrs["STRIKETHROUGH"] = null;
+    attrs["ITALIC"] = null;
+    attrs["FOREGROUND_COLOR"] = null;
+    attrs["BACKGROUND_COLOR"] = null;
+    attrs["LINK_URL"] = null;
+    attrs["UNDERLINE"] = null,
+    attrs["FONT_SIZE"] = null;
+    attrs["FONT_FAMILY"] = null;
+    attrs["FONT_WEIGHT"] = null;
+    attrs["BOLD"] = null;
+
+    let start = run.getStartIndex();
+    let end = run.getEndIndex();
+    if (start < end) {
+      let textStyle = run.getTextStyle();
+      let fontFamily = textStyle.getFontFamily();
+      let fontSize = textStyle.getFontSize();
+      let fontWeight = textStyle.getFontWeight();
+      let fontColor = getColorAsRgb(textStyle.getForegroundColor(), colorScheme)?.asHexString();
+      let background = getColorAsRgb(textStyle.getBackgroundColor(), colorScheme)?.asHexString();
+      let bold = textStyle.isBold();
+      let italic = textStyle.isItalic();
+      let strikeThrough = textStyle.isStrikethrough();
+      let underLine = textStyle.isUnderline();
+
+      attrs["STRIKETHROUGH"] = strikeThrough;
+      attrs["ITALIC"] = italic;
+      attrs["FOREGROUND_COLOR"] = fontColor;
+      attrs["BACKGROUND_COLOR"] = background;
+      attrs["LINK_URL"] = null;
+      attrs["UNDERLINE"] = underLine,
+      attrs["FONT_SIZE"] = fontSize;
+      attrs["FONT_FAMILY"] = fontFamily;
+      //attrs["FONT_WEIGHT"] = fontWeight;
+      attrs["BOLD"] = bold;
+    }
+
+    docRun.text = text;
+    docRun.start = start;
+    docRun.end = end;
+    docRun["attrs"] = attrs;
+    docRuns.push(docRun);
+  }
+
+  Logger.log(JSON.stringify(docRuns));
+  return docRuns;
+}
+
+// for slides
+function setTextRangeAttrs(tr, attrs, onlyNonNull=true) {  
+  const fnMap = {
+    "STRIKETHROUGH": "setStrikethrough",
+    "ITALIC": "setItalic",
+    "FOREGROUND_COLOR": "setForegroundColor",
+    "BACKGROUND_COLOR": "setBackgroundColor",
+    "LINK_URL": "setLinkUrl",
+    "UNDERLINE": "setUnderline",
+    "FONT_SIZE": "setFontSize",
+    "FONT_FAMILY": "setFontFamily",
+    //"FONT_WEIGHT": "setFontWeight",
+    "BOLD": "setBold",
+  };
+  const textStyle = tr.getTextStyle();
+  // set attributes (optionally only non null values, to prevent not inheriting attributes from parent, and messing things up!)
+  for (const [attr, value] of Object.entries(attrs)) {
+    if (value != null && onlyNonNull) {
+      //Logger.log(fnMap[attr])
+      //Logger.log(textStyle[fnMap[attr]])
+      textStyle[fnMap[attr]](value);
+    }
+  }
+}
+
+function test_slidesPlaceholdersAttrs() {
+  const DOC_ID = "1ByO7zNcjpEoCOX8th2d0n9LGH6uzyv6sBt0TWZ3o12g";
+  const presentation = SlidesApp.openById(DOC_ID);
+
+  const matches = findPresentationPlaceholders(presentation, SLIDES_PLACEHOLDERS_PATTERN);
+  Logger.log(JSON.stringify(matches));
+
+  for (let match of matches) {
+    Logger.log(JSON.stringify(match));
+    const attrs = getTextRangeAttrs(match.textRange, match.page.getColorScheme());
+    Logger.log(JSON.stringify(attrs));
+  }
+}
+
+function test_slidesPlaceholders() {
+  const DOC_ID = "1ByO7zNcjpEoCOX8th2d0n9LGH6uzyv6sBt0TWZ3o12g";
+  const presentation = SlidesApp.openById(DOC_ID);
+
+  const pattern = "\\{\\{([^\\{}}]+|\\{[^}]+})}}";
+  const matches = findPresentationPlaceholders(presentation, pattern);
+  Logger.log(JSON.stringify(matches));
+
+  const slides = presentation.getSlides();
+  for (let slideIdx=0; slideIdx<slides.length; slideIdx++) {
+    const slide = slides[slideIdx];
+    Logger.log(`SLIDE ${slideIdx}`);
+    for (let shape of slide.getShapes()) {
+      const shapeTextElement = shape.getText();
+      Logger.log(`TEXT: '${shapeTextElement.asString()}'`);
+    }
+  }
 }
 

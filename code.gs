@@ -3,6 +3,7 @@ const LOG_SHEET = 'log';
 const TEMPLATE_SETTINGS_TEST_COL = 'TEST';
 
 const DOC_PLACEHOLDERS_PATTERN = "{{([^{}}]+|{[^}]+})}}";
+const SLIDES_PLACEHOLDERS_PATTERN = "\\{\\{([^\\{}}]+|\\{[^}]+})}}";
 
 const MERGE_DATA_FIRST_COL = 'F';
 
@@ -105,6 +106,11 @@ function fillTemplateSettingsTestCol() {
   return filledTemplateSettings;
 }
 
+const DOC_TYPE = Object.freeze({
+  DOCUMENT: "application/vnd.google-apps.document",
+  SLIDE: "application/vnd.google-apps.presentation",
+});
+
 function merge() {
   const { rowMap, templateSettings } = loadTemplateSettings(true);
   const filledTemplateSettings = fillTemplateSettingsTestCol();
@@ -128,6 +134,12 @@ function merge() {
   {
     Logger.log(`Opening template '${templateSettings[TSETTING_DOC_TEMPLATE_ID]}'`);
     const file = DriveApp.getFileById(templateSettings[TSETTING_DOC_TEMPLATE_ID]);
+    const fileType = file.getMimeType();
+    Logger.log(file.getMimeType());
+    if (!(Object.values(DOC_TYPE).includes(fileType))) {
+      throw new Error(`Unsupported template type '${fileType}'!`);
+    }
+    const App = fileType === DOC_TYPE.DOCUMENT ? DocumentApp : SlidesApp;
     const fileName = filledTemplateSettings[TSETTING_DOC_TEMPLATE_ID];
     Logger.log(`Retrieving folders`);
     const originalFolderId = file.getParents().next().getId();
@@ -138,7 +150,7 @@ function merge() {
   
     const functions = getFunctionsMap();
     const commands = getCommandsMap();
-    const docRenderer = new DocRenderer();
+    const docRenderer = fileType === DOC_TYPE.DOCUMENT ? new DocRenderer() : new SlidesRenderer();
 
     let mergeDoc = {
       file: null,
@@ -153,7 +165,7 @@ function merge() {
     if (mergeAll) {
       mergeDoc.fileName = fileName + " _MERGE_ALL";
       const copy = file.makeCopy(mergeDoc.fileName, templateFolder);
-      mergeDoc.doc = DocumentApp.openById(copy.getId());
+      mergeDoc.doc = App.openById(copy.getId());
       mergeDoc.body = mergeDoc.doc.getBody();
       mergeDoc.body.clear();
 
@@ -171,19 +183,20 @@ function merge() {
     let docs = [];
 
     let isFirstDoc = true;
-    for (let rowIndex=0; rowIndex < 2; rowIndex++) {
+    for (let rowIndex=0; rowIndex < 1; rowIndex++) {
       const copyName = String(templateSettings[TSETTING_DOC_NAME_FORMAT]) === '' ? fileName + '_' + String(rowIndex).padStart(2, "0") : filledTemplateSettings[TSETTING_DOC_NAME_FORMAT];
       const copy = file.makeCopy(copyName, templateFolder);
       const pdfName = String(templateSettings[TSETTING_PDF_NAME_FORMAT]) === '' ? fileName + '_' + String(rowIndex).padStart(2, "0") : filledTemplateSettings[TSETTING_PDF_NAME_FORMAT];
 
-      const doc = DocumentApp.openById(copy.getId());
-      const body = doc.getBody();
+      const doc = App.openById(copy.getId());
+      const body = fileType === DOC_TYPE.DOCUMENT ? doc.getBody() : doc;
 
       const dataRow = mergeDisplayData[rowIndex];
 
       Logger.log(`Processing row ${rowIndex}`);
 
-      const matches = findPlaceholders(body, DOC_PLACEHOLDERS_PATTERN);
+      const matches = fileType === DOC_TYPE.DOCUMENT ? findPlaceholders(body, DOC_PLACEHOLDERS_PATTERN) : findPresentationPlaceholders(body, SLIDES_PLACEHOLDERS_PATTERN);
+
       // iterate matches backwards
       for (let i = matches.length - 1; i >= 0; i--) {
         const r = matches[i];

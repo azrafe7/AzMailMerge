@@ -163,10 +163,87 @@ function appendDocTo(sourceDoc, targetDoc, { header = false, footer = false }) {
 }
 
 function convertDocToPdf(pdfName, doc, outputFolder) {
-  const blob = doc.getAs('application/pdf');
+  let blob = null;
+  const file = DriveApp.getFileById(doc.getId());
+  if (file.getMimeType() === DOC_TYPE.DOCUMENT) {
+    blob = doc.getAs('application/pdf');
+  } else {
+    blob = file.getBlob();
+  }
   const pdfFile = outputFolder.createFile(blob);
   pdfFile.setName(pdfName);
   return pdfFile;
+}
+
+function findPresentationPlaceholders(presentation, pattern) {
+  for (let element of presentation.getSlides()[0].getPageElements()) {
+    const type = element.getPageElementType();
+    Logger.log(type);
+    if (type == SlidesApp.PageElementType.SHAPE) {
+      Logger.log("  " + element.asShape().getText().asRenderedString());
+    }
+  }
+  Logger.log("");
+  let matches = [];
+  const slides = presentation.getSlides();
+  for (let slideIdx=0; slideIdx<slides.length; slideIdx++) {
+    const slide = slides[slideIdx];
+    for (let shape of slide.getShapes()) {
+      const shapeTextElement = shape.getText();
+      let foundMatches = shapeTextElement.find(pattern);
+      if (foundMatches.length > 0) {
+        foundMatches.forEach((tr) => {
+          const start = tr.getStartIndex();
+          const end = tr.getEndIndex();
+          Logger.log(tr.asString());
+          matches.push({
+            page: shape.getParentPage(),
+            slideIndex: slideIdx,
+            slide,
+            textElement: shapeTextElement,
+            shape,
+            textRange: tr,
+            start,
+            end,
+            text: shapeTextElement.asString(),
+            matched: tr.asString()
+          });
+        });
+      }
+    }
+    for (let table of slide.getTables()) {
+      const numRows = table.getNumRows();
+      const numColumns = table.getNumColumns();
+      for (let r=0; r<numRows; r++) {
+        for (let c=0; c<numColumns; c++) {
+          const cell = table.getCell(r, c);
+          const cellTextElement = cell.getText();
+          let foundMatches = cellTextElement.find(pattern);
+          if (foundMatches.length > 0) {
+            foundMatches.forEach((tr) => {
+              const start = tr.getStartIndex();
+              const end = tr.getEndIndex();
+              Logger.log(tr.asString());
+              matches.push({
+                page: table.getParentPage(),
+                slideIndex: slideIdx,
+                slide,
+                textElement: cellTextElement,
+                cell,
+                table,
+                textRange: tr,
+                start,
+                end,
+                text: cellTextElement.asString(),
+                matched: tr.asString()
+              });
+            });
+          }
+        }
+      }
+    }
+  }
+  return matches;
 }
 
 function findPlaceholders(body, pattern) {
