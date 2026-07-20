@@ -166,24 +166,29 @@ function merge() {
       mergeDoc.fileName = fileName + " _MERGE_ALL";
       const copy = file.makeCopy(mergeDoc.fileName, templateFolder);
       mergeDoc.doc = App.openById(copy.getId());
-      mergeDoc.body = mergeDoc.doc.getBody();
-      mergeDoc.body.clear();
+      
+      if (fileType === DOC_TYPE.DOCUMENT) {
+        mergeDoc.body = mergeDoc.doc.getBody();
+        mergeDoc.body.clear();
 
-      // store first empty paragraph (will be removed later)
-      mergeDoc.firstPara = mergeDoc.body.getChild(0);
+        // store first empty paragraph (will be removed later)
+        mergeDoc.firstPara = mergeDoc.body.getChild(0);
 
-      // clear and store header/footer (for later use)
-      const tab = mergeDoc.doc.getTabs()[0].asDocumentTab();
-      mergeDoc.header = tab.getHeader();
-      mergeDoc.header?.clear();
-      mergeDoc.footer = tab.getFooter();
-      mergeDoc.footer?.clear();
+        // clear and store header/footer (for later use)
+        const tab = mergeDoc.doc.getTabs()[0].asDocumentTab();
+        mergeDoc.header = tab.getHeader();
+        mergeDoc.header?.clear();
+        mergeDoc.footer = tab.getFooter();
+        mergeDoc.footer?.clear();
+      } else {
+        clearPresentation(mergeDoc.doc);
+      }
     }
 
     let docs = [];
 
     let isFirstDoc = true;
-    for (let rowIndex=0; rowIndex < 1; rowIndex++) {
+    for (let rowIndex=0; rowIndex < 2; rowIndex++) {
       const copyName = String(templateSettings[TSETTING_DOC_NAME_FORMAT]) === '' ? fileName + '_' + String(rowIndex).padStart(2, "0") : filledTemplateSettings[TSETTING_DOC_NAME_FORMAT];
       const copy = file.makeCopy(copyName, templateFolder);
       const pdfName = String(templateSettings[TSETTING_PDF_NAME_FORMAT]) === '' ? fileName + '_' + String(rowIndex).padStart(2, "0") : filledTemplateSettings[TSETTING_PDF_NAME_FORMAT];
@@ -227,13 +232,19 @@ function merge() {
       docs.push(doc);
       
       if (mergeAll) {
-        appendDocTo(doc, mergeDoc.doc, { header:isFirstDoc, footer:isFirstDoc });
-        if (isFirstDoc) {
-          mergeDoc.firstPara.removeFromParent();
-          if (mergeDoc.header) mergeDoc.header.getChild(0).removeFromParent();
-          if (mergeDoc.footer) mergeDoc.footer.getChild(0).removeFromParent();
+        if (fileType === DOC_TYPE.DOCUMENT) {
+          appendDocTo(doc, mergeDoc.doc, { header:isFirstDoc, footer:isFirstDoc });
+          if (isFirstDoc) {
+            mergeDoc.firstPara.removeFromParent();
+            if (mergeDoc.header) mergeDoc.header.getChild(0).removeFromParent();
+            if (mergeDoc.footer) mergeDoc.footer.getChild(0).removeFromParent();
+          }
+          mergeDoc.body.appendPageBreak();
+        } else {
+          for (let slide of doc.getSlides()) {
+            mergeDoc.doc.appendSlide(slide);
+          }
         }
-        mergeDoc.body.appendPageBreak();
       }
       
       doc.saveAndClose();
