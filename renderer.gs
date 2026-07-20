@@ -284,3 +284,206 @@ class DocRenderer {
   }  
 }
 
+class SlidesRenderer {
+  constructor() { 
+    this.cursor = null;
+  }
+
+  render(items, matchElement) {
+    this.attrs = this.getMatchAttributes(matchElement);
+    //Logger.log(JSON.stringify(this.attrs));
+    this.cursor = this.splitMatch(matchElement);
+
+    for (const item of items) {
+      Logger.log(JSON.stringify([matchElement.matched, item]));
+      switch (item.kind) {
+        case "text": {
+          this.renderTextItem(item, matchElement);
+          break;
+        }
+
+        case "image": {
+          this.renderImageItem(item, matchElement);
+          break;
+        }
+
+        case "chart": {
+          this.renderChartItem(item, matchElement);
+          break;
+        }
+
+        case "table": {
+          this.renderTableItem(item, matchElement);
+          break;
+        }
+
+        case "pagebreak": {
+          this.renderPageBreakItem(item, matchElement);
+          break;
+        }
+
+        case "link": {
+          this.renderLinkItem(item, matchElement);
+          break;
+        }
+
+        case "split": {
+          this.renderSplitItem(item, matchElement);
+          break;
+        }
+
+        default:
+          
+      }
+    }
+
+    //this.cursor.after.merge();
+  }
+
+  getMatchFromRangeElement(rangeElement, context) {
+    return {
+      context,
+      ...rangeElement
+    }
+  }
+
+  getMatchAttributes(matchElement) {
+    // get formatting attributes (into a clone)
+    const runsAttrs = getTextRangeAttrs(matchElement.textRange, matchElement.slide.getColorScheme());
+    const attrs = Object.assign({}, runsAttrs[0]);
+    //Logger.log(JSON.stringify([matched, start, endInclusive]));
+    //Logger.log(JSON.stringify(["BEFORE:", matchElement.textElement.getAttributes(matchElement.start)]));
+    return attrs;
+  }
+
+  setTextAttributes(textElement, attrs, onlyNonNull=true) {  
+    // set attributes (optionally only non null values, to prevent not inheriting attributes from parent, and messing things up!)
+    if (endInclusive > start) {
+      for (const [attr, value] of Object.entries(attrs)) {
+        if (value != null && onlyNonNull) {
+          textElement.setAttributes(start, endInclusive, {
+            [attr]: value
+          });
+        }
+      }
+    }
+  }
+
+  setMatchAttributes(matchElement, attrs, onlyNonNull=true) {  
+    setTextRangeAttrs(matchElement.textRange, attrs, onlyNonNull);
+  }
+
+  splitMatch(matchElement) {
+    const before = matchElement.textRange;
+    before.setText("");
+    return {before};
+  }
+
+  renderSplitItem(item, matchElement) {
+  }
+
+  renderTextItem(item, matchElement, callback) {
+    this.cursor.before = this.cursor.before.appendText(item.value);
+
+    //matchElement.textElement.clear(matchElement.start, matchElement.end);
+    //matchElement.textRange.setText(item.value);
+    //matchElement.textRange.appendRange(tr);
+    //matchElement.textElement.insertRange(matchElement.start, matchElement.textRange, true);
+
+    if (callback) callback(item, matchElement);
+
+    this.setMatchAttributes(matchElement, this.attrs.attrs);
+  }
+
+  renderImageBlob(item, matchElement, blob) {
+    return;
+    const inlineImage = this.cursor.before.appendInlineImage(blob);
+
+    if (item.width || item.height) {
+      const w = inlineImage.getWidth();
+      const h = inlineImage.getHeight();
+      const ratio = w / h;
+      if (item.width) {
+        inlineImage.setWidth(item.width);
+        if (!item.height) inlineImage.setHeight(item.width / ratio);
+      }    
+      if (item.height) {
+        inlineImage.setHeight(item.height);
+        if (!item.width) inlineImage.setWidth(item.height * ratio);
+      }
+    }
+
+    if (item.linkUrl) {
+      inlineImage.setLinkUrl(item.linkUrl);
+    }
+
+    return inlineImage;
+  }
+
+  renderImageItem(item, matchElement) {
+    let blob = null;
+    if (item.fileId) {
+      const file = DriveApp.getFileById(item.fileId);
+      blob = file.getAs('image/png');
+    } else if (item.url) {
+      const response = UrlFetchApp.fetch(item.url);
+      blob = response.getBlob();
+    }
+
+    const inlineImage = this.renderImageBlob(item, matchElement, blob);
+  }
+
+  renderChartItem(item, matchElement) {
+    const sheet = G.ss.getSheetByName(item.src);
+    const charts = sheet.getCharts();
+    const chart = charts[0];
+    const blob = chart.getAs('image/png');
+    
+    const inlineImage = this.renderImageBlob(item, matchElement, blob);
+  }
+
+  renderTableItem(item, matchElement) {
+    const namedRange = G.ss.getRangeByName(item.src);
+    const dataRange = namedRange ? namedRange : G.ss.getRange(item.src);
+    if (dataRange == null) return;
+
+    const values = dataRange.getDisplayValues();
+    const childIndex = this.cursor.parent.getChildIndex(this.cursor.before);
+
+    if (!item.format) {
+      this.cursor.parent.insertTable(childIndex, values);
+    } else {
+      const table = this.cursor.parent.insertTable(childIndex);
+      const rangeRuns = getRangeRuns(dataRange);
+      
+      rangeRuns.forEach(row => {
+        let tableRow = table.appendTableRow();
+        row.forEach(cell => {
+          let tableCell = tableRow.appendTableCell();
+          let text = tableCell.editAsText();
+          const cellText = cell.map((run) => run.text).join("");
+          text.setText(cellText);
+          cell.forEach(run => {
+            const bg = run.attrs["BACKGROUND_COLOR"];
+            run.attrs["BACKGROUND_COLOR"] = null;
+            tableCell.setBackgroundColor(bg);
+            this.setTextAttributes(text, run.start, run.endInclusive, run.attrs);
+          });
+        })
+      });
+    }
+  }
+
+  renderPageBreakItem(item, matchElement) {
+    this.cursor.before.appendPageBreak();
+  }
+
+  renderLinkItem(item, matchElement) {
+    this.renderTextItem(item, matchElement, (item, matchElement) => {
+      //const textRange = matchElement.textElement.getRange(matchElement.start, matchElement.end);
+      Logger.log(matchElement.textRange.asString());
+      this.cursor.before.getTextStyle().setLinkUrl(item.url);
+    });
+  }  
+}
+
