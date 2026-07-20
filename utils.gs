@@ -176,70 +176,36 @@ function convertDocToPdf(pdfName, doc, outputFolder) {
 }
 
 function findPresentationPlaceholders(presentation, pattern) {
-  for (let element of presentation.getSlides()[0].getPageElements()) {
-    const type = element.getPageElementType();
-    Logger.log(type);
-    if (type == SlidesApp.PageElementType.SHAPE) {
-      Logger.log("  " + element.asShape().getText().asRenderedString());
-    }
-  }
-  Logger.log("");
   let matches = [];
   const slides = presentation.getSlides();
   for (let slideIdx=0; slideIdx<slides.length; slideIdx++) {
     const slide = slides[slideIdx];
-    for (let shape of slide.getShapes()) {
-      const shapeTextElement = shape.getText();
-      let foundMatches = shapeTextElement.find(pattern);
+    
+    let textNodes = [];
+    const { tree, maxStepsReached } = getPageElementStructure(slide.getPageElements(), (node) => {
+      if (node.typedElement.getText) textNodes.push(node);
+    });
+
+    for (let textNode of textNodes) {
+      const textElement = textNode.typedElement.getText();
+      let foundMatches = textElement.find(pattern);
       if (foundMatches.length > 0) {
         foundMatches.forEach((tr) => {
           const start = tr.getStartIndex();
           const end = tr.getEndIndex();
           Logger.log(tr.asString());
           matches.push({
-            page: shape.getParentPage(),
             slideIndex: slideIdx,
             slide,
-            textElement: shapeTextElement,
-            shape,
+            textElement: textElement,
+            parent: textNode.parent,
             textRange: tr,
             start,
             end,
-            text: shapeTextElement.asString(),
+            text: textElement.asString(),
             matched: tr.asString()
           });
         });
-      }
-    }
-    for (let table of slide.getTables()) {
-      const numRows = table.getNumRows();
-      const numColumns = table.getNumColumns();
-      for (let r=0; r<numRows; r++) {
-        for (let c=0; c<numColumns; c++) {
-          const cell = table.getCell(r, c);
-          const cellTextElement = cell.getText();
-          let foundMatches = cellTextElement.find(pattern);
-          if (foundMatches.length > 0) {
-            foundMatches.forEach((tr) => {
-              const start = tr.getStartIndex();
-              const end = tr.getEndIndex();
-              Logger.log(tr.asString());
-              matches.push({
-                page: table.getParentPage(),
-                slideIndex: slideIdx,
-                slide,
-                textElement: cellTextElement,
-                cell,
-                table,
-                textRange: tr,
-                start,
-                end,
-                text: cellTextElement.asString(),
-                matched: tr.asString()
-              });
-            });
-          }
-        }
       }
     }
   }
@@ -337,6 +303,95 @@ function getRangeRuns(range) {
   return docCells;
 }
 
+function getPageElementStructure(section, callback) {
+  if (Array.isArray(section)) {
+    const array = section.slice();
+    section = {
+      getChildren: () => array,
+      getPageElementType: () => "DUMMY_ROOT",
+    }
+  }
+  let tree = {};
+  let parentsMap = {};
+  let id = 0;
+  let stack = [[{elementId:id, element:section}]];
+  let step = 0;
+  let level = 0;
+  const MAX_STEPS = 500;
+  let maxStepsReached = false;
+  while (stack.length > 0 && !maxStepsReached) {
+    const stackElements = stack.pop();
+    for (let stackElement of stackElements) {
+      const { elementId, element } = stackElement;
+      const { typed: typedElement, type } = getAsTypedPageElement(element);
+      Logger.log(type);
+      
+      let getChildren = typedElement.getChildren ? typedElement.getChildren : () => [];
+      switch (type) {
+        case SlidesApp.PageElementType.GROUP: {
+          getChildren = typedElement.getChildren;
+          break;
+        }
+
+        case SlidesApp.PageElementType.TABLE: {
+          const numRows = typedElement.getNumRows();
+          const numColumns = typedElement.getNumColumns();
+          getChildren = () => {
+            let cells = [];
+            for (let r=0; r<numRows; r++) {
+              for (let c=0; c<numColumns; c++) {
+                let cell = typedElement.getCell(r, c);
+                cell["getPageElementType"] = () => "CELL";
+                cells.push(cell);
+              }
+            }
+            return cells;
+          };
+          break;
+        }
+      }
+
+      const children = getChildren();
+      const numChildren = children.length;
+      const text = typedElement.getText ? typedElement.getText().asString() : null;
+
+      let node = { elementId, type, level:null, children: [], text };
+      //Logger.log(JSON.stringify(node));
+
+      let parent = null;
+      if (step == 0) {
+        tree = node;
+        node.level = 0;
+      } else {
+        parent = parentsMap[node.elementId];
+        parent.children.push(node);
+        node.level = parent.level + 1;
+        level = Math.max(level, node.level);
+      }
+      delete node.elementId;
+      if (node.text == null) delete node.text;
+
+      if (callback) callback({typedElement, parent, ...node});
+
+      let stackChildren = [];
+      for (let childIndex = 0; childIndex < numChildren; childIndex++) {
+        id++;
+        const child = children[childIndex];
+        stackChildren.push({ elementId:id, element:child });
+        parentsMap[id] = node;
+      }
+      if (stackChildren.length > 0) {
+        stack.push(stackChildren);
+      }
+    }
+    step++;
+    maxStepsReached = step >= MAX_STEPS;
+  }
+
+  Logger.log(`numElements:${id + 1} steps:${step} maxLevel:${level}`);
+  return { tree, maxStepsReached };
+}
+
 function getSectionStructure(section) {
   let tree = {};
   let parentsMap = {};
@@ -386,6 +441,55 @@ function getSectionStructure(section) {
 
   Logger.log(`numElements:${id + 1} steps:${step} maxLevel:${level}`);
   return { tree, maxStepsReached };
+}
+
+function getAsTypedPageElement(element, ignoreErrors=true) {
+  const type = (ignoreErrors && !element.getPageElementType) ? "DUMMY" : element.getPageElementType();
+  let typed = ignoreErrors ? element : null;
+
+  switch (type) {
+    case SlidesApp.PageElementType.SHAPE: {
+      typed = element.asShape();
+      break;
+    }	
+    case SlidesApp.PageElementType.IMAGE: {
+      typed = element.asImage();
+      break;
+    }	
+    case SlidesApp.PageElementType.VIDEO: {
+      typed = element.asVideo();
+      break;
+    }	
+    case SlidesApp.PageElementType.TABLE: {
+      typed = element.asTable();
+      break;
+    }	
+    case SlidesApp.PageElementType.GROUP: {
+      typed = element.asGroup();
+      break;
+    }	
+    case SlidesApp.PageElementType.LINE: {
+      typed = element.asLine();
+      break;
+    }	
+    case SlidesApp.PageElementType.WORD_ART: {
+      typed = element.asWordArt();
+      break;
+    }	
+    case SlidesApp.PageElementType.SHEETS_CHART: {
+      typed = element.asSheetsChart();
+      break;
+    }	
+    case SlidesApp.PageElementType.SPEAKER_SPOTLIGHT: {
+      typed = element.asSpeakerSpotlight();
+      break;
+    }	
+    case SlidesApp.PageElementType.UNSUPPORTED: 
+    default:
+      if (!ignoreErrors) throw new Error("UNSUPPORTED ELEMENT TYPE");
+  }
+
+  return { typed, type };
 }
 
 /**

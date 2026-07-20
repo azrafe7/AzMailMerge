@@ -230,6 +230,13 @@ function test_slidesPlaceholders() {
   const DOC_ID = "1ByO7zNcjpEoCOX8th2d0n9LGH6uzyv6sBt0TWZ3o12g";
   const presentation = SlidesApp.openById(DOC_ID);
 
+  const { tree, maxStepsReached } = getPageElementStructure(presentation.getSlides()[0].getPageElements());
+
+  //Logger.log(JSON.stringify(tree));
+  logToSheet([maxStepsReached, JSON.stringify(tree)]);
+  return;
+
+
   const pattern = "\\{\\{([^\\{}}]+|\\{[^}]+})}}";
   const matches = findPresentationPlaceholders(presentation, pattern);
   Logger.log(JSON.stringify(matches));
