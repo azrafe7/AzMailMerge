@@ -307,6 +307,11 @@ class SlidesRenderer {
           break;
         }
 
+        case "replace_image": {
+          this.renderReplaceImageItem(item, matchElement);
+          break;
+        }
+
         case "chart": {
           this.renderChartItem(item, matchElement);
           break;
@@ -385,42 +390,44 @@ class SlidesRenderer {
   renderTextItem(item, matchElement, callback) {
     this.cursor.before = this.cursor.before.appendText(item.value);
 
-    //matchElement.textElement.clear(matchElement.start, matchElement.end);
-    //matchElement.textRange.setText(item.value);
-    //matchElement.textRange.appendRange(tr);
-    //matchElement.textElement.insertRange(matchElement.start, matchElement.textRange, true);
-
     if (callback) callback(item, matchElement);
 
     this.setMatchAttributes(matchElement, this.attrs.attrs);
   }
 
-  renderImageBlob(item, matchElement, blob) {
-    return;
-    const inlineImage = this.cursor.before.appendInlineImage(blob);
+  renderImageBlob(item, matchElement, blob, replace=false) {
+    const image = replace ? 
+      matchElement.parent.replaceWithImage(blob)
+      : matchElement.slide.insertImage(blob);
 
     if (item.width || item.height) {
-      const w = inlineImage.getWidth();
-      const h = inlineImage.getHeight();
+      const w = image.getWidth();
+      const h = image.getHeight();
       const ratio = w / h;
       if (item.width) {
-        inlineImage.setWidth(item.width);
-        if (!item.height) inlineImage.setHeight(item.width / ratio);
+        image.setWidth(item.width);
+        if (!item.height) image.setHeight(item.width / ratio);
       }    
       if (item.height) {
-        inlineImage.setHeight(item.height);
-        if (!item.width) inlineImage.setWidth(item.height * ratio);
+        image.setHeight(item.height);
+        if (!item.width) image.setWidth(item.height * ratio);
       }
+    }
+    if (item.left != null) {
+      image.setLeft(item.left);
+    }
+    if (item.top != null) {
+      image.setTop(item.top);
     }
 
     if (item.linkUrl) {
-      inlineImage.setLinkUrl(item.linkUrl);
+      image.setLinkUrl(item.linkUrl);
     }
 
-    return inlineImage;
+    return image;
   }
 
-  renderImageItem(item, matchElement) {
+  renderImageItem(item, matchElement, replace=false) {
     let blob = null;
     if (item.fileId) {
       const file = DriveApp.getFileById(item.fileId);
@@ -430,16 +437,30 @@ class SlidesRenderer {
       blob = response.getBlob();
     }
 
-    const inlineImage = this.renderImageBlob(item, matchElement, blob);
+    const image = this.renderImageBlob(item, matchElement, blob, replace);
   }
 
-  renderChartItem(item, matchElement) {
+  renderReplaceImageItem(item, matchElement) {
+    if (!item.width && !item.height) {
+      item.width = matchElement.parent.getWidth();
+      item.height = matchElement.parent.getHeight();
+    }
+    if (item.left == null) {
+      item.left = matchElement.parent.getLeft();
+    }
+    if (item.top == null) {
+      item.top = matchElement.parent.getTop();
+    }
+    this.renderImageItem(item, matchElement, true);
+  }
+
+  renderChartItem(item, matchElement, replace) {
     const sheet = G.ss.getSheetByName(item.src);
     const charts = sheet.getCharts();
     const chart = charts[0];
     const blob = chart.getAs('image/png');
     
-    const inlineImage = this.renderImageBlob(item, matchElement, blob);
+    const image = this.renderImageBlob(item, matchElement, blob, replace);
   }
 
   renderTableItem(item, matchElement) {

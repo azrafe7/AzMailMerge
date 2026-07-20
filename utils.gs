@@ -198,7 +198,7 @@ function findPresentationPlaceholders(presentation, pattern) {
             slideIndex: slideIdx,
             slide,
             textElement: textElement,
-            parent: textNode.parent,
+            parent: textNode.typedElement,
             textRange: tr,
             start,
             end,

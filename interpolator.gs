@@ -44,6 +44,21 @@ function getCommandsMap() {
         linkUrl: args.linkUrl,
         width: args.width,
         height: args.height,
+        left: args.left,
+        top: args.top,
+      }
+    ]],
+
+    ["REPLACE_IMAGE", ({ args }) => [
+      {
+        kind: "replace_image",
+        fileId: args.fileId,
+        url: args.url,
+        linkUrl: args.linkUrl,
+        width: args.width,
+        height: args.height,
+        left: args.left,
+        top: args.top,
       }
     ]],
 
@@ -54,6 +69,8 @@ function getCommandsMap() {
         linkUrl: args.linkUrl,
         width: args.width,
         height: args.height,
+        left: args.left,
+        top: args.top,
       }
     ]],
 
