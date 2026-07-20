@@ -361,16 +361,11 @@ class SlidesRenderer {
     return attrs;
   }
 
-  setTextAttributes(textElement, attrs, onlyNonNull=true) {  
+  setTextAttributes(textElement, start, end, attrs, onlyNonNull=true) {
     // set attributes (optionally only non null values, to prevent not inheriting attributes from parent, and messing things up!)
-    if (endInclusive > start) {
-      for (const [attr, value] of Object.entries(attrs)) {
-        if (value != null && onlyNonNull) {
-          textElement.setAttributes(start, endInclusive, {
-            [attr]: value
-          });
-        }
-      }
+    if (end >= start) {
+      const textRange = textElement.getRange(start, end);
+      setTextRangeAttrs(textRange, attrs, onlyNonNull);
     }
   }
 
@@ -469,26 +464,28 @@ class SlidesRenderer {
     if (dataRange == null) return;
 
     const values = dataRange.getDisplayValues();
-    const childIndex = this.cursor.parent.getChildIndex(this.cursor.before);
+    const numRows = dataRange.getNumRows();
+    const numColumns = dataRange.getNumColumns();
 
-    if (!item.format) {
-      this.cursor.parent.insertTable(childIndex, values);
-    } else {
-      const table = this.cursor.parent.insertTable(childIndex);
+    let table = matchElement.slide.insertTable(numRows, numColumns);
+    const rows = values;
+    rows.forEach((row, rowIndex) => row.forEach((col, colIndex) => {
+      const cell = table.getCell(rowIndex, colIndex);
+      cell.getText().setText(rows[rowIndex][colIndex]);
+    }));
+
+    if (item.format) {
       const rangeRuns = getRangeRuns(dataRange);
       
-      rangeRuns.forEach(row => {
-        let tableRow = table.appendTableRow();
-        row.forEach(cell => {
-          let tableCell = tableRow.appendTableCell();
-          let text = tableCell.editAsText();
-          const cellText = cell.map((run) => run.text).join("");
-          text.setText(cellText);
+      rangeRuns.forEach((row, rowIndex) => {
+        row.forEach((cell, colIndex)  => {
           cell.forEach(run => {
+            const tableCell = table.getCell(rowIndex, colIndex);
             const bg = run.attrs["BACKGROUND_COLOR"];
             run.attrs["BACKGROUND_COLOR"] = null;
-            tableCell.setBackgroundColor(bg);
-            this.setTextAttributes(text, run.start, run.endInclusive, run.attrs);
+            const text = tableCell.getText();
+            if (bg != null) tableCell.getFill().setSolidFill(bg);
+            this.setTextAttributes(text, run.start, run.endInclusive + 1, run.attrs);
           });
         })
       });
